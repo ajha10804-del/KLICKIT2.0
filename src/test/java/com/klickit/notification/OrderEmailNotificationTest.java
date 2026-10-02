@@ -37,6 +37,7 @@ import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -257,6 +258,38 @@ class OrderEmailNotificationTest {
         String emailHtml = emailService.buildOrderEmailBody(order);
 
         assertThat(emailHtml).contains("01 Oct 2026, 05:30 pm");
+    }
+
+    @Test
+    @DisplayName("Deadline in email is formatted in Asia/Kolkata timezone under US English locale (en-US)")
+    void buildOrderEmailBody_formatsDeadlineInIST_underUSEnglishLocale() {
+        Order order = buildSampleOrder();
+        order.setDeadline(fixedNow);
+
+        Locale originalLocale = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.US);
+            String emailHtml = emailService.buildOrderEmailBody(order);
+            assertThat(emailHtml).contains("01 Oct 2026, 05:30 pm");
+        } finally {
+            Locale.setDefault(originalLocale);
+        }
+    }
+
+    @Test
+    @DisplayName("Deadline in email is formatted in Asia/Kolkata timezone under French locale (fr-FR)")
+    void buildOrderEmailBody_formatsDeadlineInIST_underFrenchLocale() {
+        Order order = buildSampleOrder();
+        order.setDeadline(fixedNow);
+
+        Locale originalLocale = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.FRANCE);
+            String emailHtml = emailService.buildOrderEmailBody(order);
+            assertThat(emailHtml).contains("01 Oct 2026, 05:30 pm");
+        } finally {
+            Locale.setDefault(originalLocale);
+        }
     }
 
     // =========================================================================

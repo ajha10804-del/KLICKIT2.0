@@ -12,6 +12,7 @@ import java.math.BigDecimal;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Service responsible for constructing safe HTML order notification emails
@@ -34,7 +35,7 @@ public class EmailService {
         this.emailClient = emailClient;
         this.adminEmail = adminEmail;
         this.displayZoneId = ZoneId.of(mailTimezone != null && !mailTimezone.isBlank() ? mailTimezone.trim() : "Asia/Kolkata");
-        this.dateFormatter = DateTimeFormatter.ofPattern("dd MMM yyyy, hh:mm a").withZone(displayZoneId);
+        this.dateFormatter = DateTimeFormatter.ofPattern("dd MMM yyyy, hh:mm a", Locale.UK).withZone(displayZoneId);
     }
 
     public boolean sendOrderConfirmationToAdmin(Order order) {
