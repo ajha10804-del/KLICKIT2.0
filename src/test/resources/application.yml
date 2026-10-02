@@ -1,0 +1,29 @@
+spring:
+  application:
+    name: klickit-backend-test
+  main:
+    allow-circular-references: true
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/klickit}
+    username: ${DB_USERNAME:klickit}
+    password: ${DB_PASSWORD:klickit}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  mail:
+    host: localhost
+    port: 2525
+    username: test-mail-user
+    password: test-mail-password
+
+klickit:
+  admin:
+    email: admin@klickit.com
+  jwt:
+    secret: ${JWT_SECRET:dGVzdC1kdW1teS1zZWNyZXQta2V5LWZvci11bml0LXRlc3RzLW11c3QtYmUtYXQtbGVhc3QtMjU2LWJpdHMtbG9uZw==}
+    expiration-ms: 3600000
+  cors:
+    allowed-origins: http://localhost:3000,http://localhost:5173,http://localhost:8080

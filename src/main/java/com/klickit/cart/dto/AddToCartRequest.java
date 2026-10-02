@@ -1,0 +1,29 @@
+package com.klickit.cart.dto;
+
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+
+import java.util.UUID;
+
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+public class AddToCartRequest {
+
+    @NotBlank(message = "Session ID is required")
+    private String sessionId;
+
+    @NotNull(message = "Product ID is required")
+    private UUID productId;
+
+    @Min(value = 1, message = "Quantity must be at least 1")
+    @Max(value = 20, message = "Quantity cannot exceed 20")
+    private int quantity = 1;
+}

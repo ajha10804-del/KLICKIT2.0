@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KLICKIT — Hyperlocal Campus Delivery</title>
+    <style>
+        :root {
+            --primary: #f59e0b;
+            --primary-dark: #d97706;
+            --secondary: #1a1a1a;
+            --light-bg: #f8fafc;
+            --card-bg: #ffffff;
+            --border: #e2e8f0;
+            --text-dark: #0f172a;
+            --text-muted: #64748b;
+            --success: #10b981;
+            --danger: #ef4444;
+            --radius: 8px;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { background-color: var(--light-bg); color: var(--text-dark); min-height: 100vh; display: flex; flex-direction: column; }
+
+        header { background: #fff; border-bottom: 1px solid var(--border); padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; }
+        .logo { font-size: 1.5rem; font-weight: 800; color: #000; display: flex; align-items: center; gap: 0.5rem; }
+        .logo span { color: var(--primary); }
+
+        nav { display: flex; gap: 0.75rem; }
+        .nav-btn { background: none; border: 1px solid transparent; padding: 0.5rem 1rem; border-radius: var(--radius); font-weight: 600; cursor: pointer; color: var(--text-muted); transition: all 0.2s; }
+        .nav-btn:hover { color: var(--text-dark); }
+        .nav-btn.active { background: var(--secondary); color: #fff; }
+
+        main { flex: 1; max-width: 1200px; margin: 0 auto; width: 100%; padding: 2rem 1.5rem; }
+        .view-section { display: none; }
+        .view-section.active { display: block; }
+
+        /* Customer Section */
+        .hero { background: #fef3c7; border: 1px solid #fde68a; border-radius: var(--radius); padding: 1.5rem; margin-bottom: 2rem; }
+        .hero h1 { font-size: 1.75rem; color: #78350f; margin-bottom: 0.5rem; }
+        .hero p { color: #92400e; font-size: 1rem; }
+
+        .customer-layout { display: grid; grid-template-columns: 2fr 1fr; gap: 2rem; }
+        @media (max-width: 768px) { .customer-layout { grid-template-columns: 1fr; } }
+
+        .products-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1.25rem; }
+        .product-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .product-category { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700; margin-bottom: 0.25rem; }
+        .product-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 0.5rem; }
+        .product-desc { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem; flex: 1; }
+        .product-footer { display: flex; justify-content: space-between; align-items: center; }
+        .product-price { font-size: 1.2rem; font-weight: 800; color: #000; }
+
+        button.btn-primary { background: var(--primary); color: #000; border: none; padding: 0.5rem 1rem; border-radius: var(--radius); font-weight: 700; cursor: pointer; transition: background 0.2s; }
+        button.btn-primary:hover { background: var(--primary-dark); }
+        button.btn-sm { padding: 0.25rem 0.5rem; font-size: 0.85rem; }
+        button.btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text-dark); padding: 0.5rem 1rem; border-radius: var(--radius); font-weight: 600; cursor: pointer; }
+        button.btn-outline:hover { background: #f8fafc; }
+        button.btn-success { background: var(--success); color: #fff; border: none; padding: 0.5rem 1rem; border-radius: var(--radius); font-weight: 700; cursor: pointer; }
+        button.btn-danger { background: var(--danger); color: #fff; border: none; padding: 0.5rem 1rem; border-radius: var(--radius); font-weight: 700; cursor: pointer; }
+
+        /* Cart & Checkout */
+        .cart-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; position: sticky; top: 5rem; }
+        .cart-item { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 0; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
+        .cart-item-info { flex: 1; }
+        .cart-qty-ctrl { display: flex; align-items: center; gap: 0.5rem; }
+        .cart-summary { margin-top: 1.25rem; padding-top: 1rem; border-top: 2px dashed var(--border); }
+        .summary-row { display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.95rem; }
+        .summary-row.total { font-weight: 800; font-size: 1.2rem; }
+
+        .checkout-box { margin-top: 1.5rem; background: #fafafa; border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem; }
+        .form-group { margin-bottom: 0.75rem; }
+        .form-group label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.25rem; color: var(--text-dark); }
+        .form-control { width: 100%; padding: 0.5rem; border: 1px solid var(--border); border-radius: var(--radius); font-size: 0.9rem; }
+        .form-control:focus { outline: 2px solid var(--primary); }
+
+        /* Admin & Driver Tables */
+        .admin-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; margin-bottom: 1.5rem; }
+        .tab-nav { display: flex; gap: 0.5rem; border-bottom: 2px solid var(--border); margin-bottom: 1rem; }
+        .tab-btn { background: none; border: none; font-size: 0.95rem; font-weight: 700; color: var(--text-muted); padding: 0.5rem 1rem; cursor: pointer; border-radius: var(--radius); }
+        .tab-btn.active { color: #000; border-bottom: 3px solid var(--primary); margin-bottom: -2px; }
+
+        .data-table { width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.9rem; }
+        .data-table th, .data-table td { padding: 0.75rem 1rem; text-align: left; border-bottom: 1px solid var(--border); }
+        .data-table th { background: #f8fafc; font-weight: 700; color: var(--text-muted); }
+        .badge { padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; }
+        .badge-placed { background: #fef3c7; color: #92400e; }
+        .badge-assigned { background: #dbeafe; color: #1e40af; }
+        .badge-delivered { background: #d1fae5; color: #065f46; }
+        .badge-cancelled { background: #fee2e2; color: #991b1b; }
+
+        .auth-bar { display: flex; justify-content: space-between; align-items: center; background: #f1f5f9; padding: 0.75rem 1rem; border-radius: var(--radius); margin-bottom: 1rem; }
+        .toast { padding: 0.75rem 1rem; border-radius: var(--radius); margin-bottom: 1rem; font-size: 0.9rem; display: none; }
+        .toast-success { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
+        .toast-error { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+
+        .delivery-card { background: #fff; border: 1px solid var(--border); border-left: 4px solid var(--primary); border-radius: var(--radius); padding: 1.25rem; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center; }
+        .delivery-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem 1.5rem; margin-top: 0.5rem; font-size: 0.9rem; }
+        .delivery-meta strong { color: var(--text-dark); }
+
+        footer { text-align: center; padding: 1.5rem; color: var(--text-muted); font-size: 0.85rem; border-top: 1px solid var(--border); background: #fff; margin-top: auto; }
+    </style>
+</head>
+<body>
+
+<div id="config-error-banner" style="display: none; background: #ef4444; color: #fff; text-align: center; padding: 0.75rem 1rem; font-weight: 700;"></div>
+
+<header>
+    <div class="logo">KLICK<span>IT</span></div>
+    <nav>
+        <button class="nav-btn active" onclick="switchMainView('customer')">Customer Store</button>
+        <button class="nav-btn" onclick="switchMainView('admin')">Admin Portal</button>
+        <button class="nav-btn" onclick="switchMainView('delivery')">Delivery Partner</button>
+    </nav>
+</header>
+
+<main>
+    <!-- CUSTOMER STORE VIEW -->
+    <section id="view-customer" class="view-section active">
+        <div class="hero">
+            <h1>Lightning-Fast Local Delivery</h1>
+            <p>Your daily essentials delivered right to your doorstep in minutes.</p>
+        </div>
+
+        <div id="customer-toast" class="toast"></div>
+
+        <div class="customer-layout">
+            <div>
+                <h2 style="margin-bottom: 1rem;">Products Catalog</h2>
+                <div id="products-list" class="products-grid">
+                    <p style="color: var(--text-muted);">Loading products...</p>
+                </div>
+            </div>
+
+            <div>
+                <div class="cart-card">
+                    <h2>Your Cart <span id="cart-item-count" style="font-size: 0.9rem; color: var(--text-muted); font-weight: normal;">(0 items)</span></h2>
+                    
+                    <div id="cart-items" style="margin-top: 1rem; max-height: 260px; overflow-y: auto;">
+                        <p style="color: var(--text-muted); font-size: 0.9rem; text-align: center; padding: 1rem 0;">Your cart is empty</p>
+                    </div>
+
+                    <div class="cart-summary">
+                        <div class="summary-row">
+                            <span>Subtotal</span>
+                            <span id="cart-subtotal">₹0.00</span>
+                        </div>
+                        <div class="summary-row">
+                            <span>Delivery Fee</span>
+                            <span style="color: var(--success); font-weight: 600;">FREE</span>
+                        </div>
+                        <div class="summary-row total">
+                            <span>Total</span>
+                            <span id="cart-total">₹0.00</span>
+                        </div>
+                    </div>
+
+                    <div class="checkout-box">
+                        <h3 style="font-size: 1rem; margin-bottom: 0.75rem;">Fast Checkout</h3>
+                        <form id="checkout-form" onsubmit="handleCheckout(event)">
+                            <div class="form-group">
+                                <label for="cust-name">Full Name</label>
+                                <input type="text" id="cust-name" class="form-control" placeholder="Pooja Hegde" maxlength="100" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="cust-phone">Phone Number</label>
+                                <input type="tel" id="cust-phone" class="form-control" placeholder="+919876543222" pattern="^[+0-9\-\s()]{7,20}$" maxlength="20" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="cust-address">Delivery Address</label>
+                                <textarea id="cust-address" class="form-control" rows="2" placeholder="Room 304, Kaveri Hostel, North Campus" maxlength="255" required></textarea>
+                            </div>
+                            <button type="submit" id="checkout-btn" class="btn-primary" style="width: 100%; padding: 0.75rem; margin-top: 0.5rem;" disabled>Place Order (15-Min Delivery)</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ADMIN PORTAL VIEW -->
+    <section id="view-admin" class="view-section">
+        <div class="admin-card">
+            <h2>Admin Management Portal</h2>
+            <div id="admin-auth-box" class="auth-bar" style="margin-top: 1rem;">
+                <span id="admin-auth-status">Not Authenticated</span>
+                <div>
+                    <input type="email" id="admin-email" placeholder="admin@klickit.com" value="admin@klickit.com" style="padding: 0.35rem; border-radius: 4px; border: 1px solid #ccc; font-size: 0.85rem;">
+                    <input type="password" id="admin-pwd" placeholder="Password" style="padding: 0.35rem; border-radius: 4px; border: 1px solid #ccc; font-size: 0.85rem;">
+                    <button class="btn-primary btn-sm" onclick="loginAdmin()">Login as Admin</button>
+                </div>
+            </div>
+
+            <div id="admin-toast" class="toast"></div>
+
+            <!-- Exactly the 3 operational categories required by MVP -->
+            <div class="tab-nav">
+                <button class="tab-btn active" id="tab-btn-new" onclick="switchAdminTab('new')">New Orders</button>
+                <button class="tab-btn" id="tab-btn-assigned" onclick="switchAdminTab('assigned')">Assigned Orders</button>
+                <button class="tab-btn" id="tab-btn-delivered" onclick="switchAdminTab('delivered')">Delivered Orders</button>
+                <button class="btn-outline btn-sm" style="margin-left: auto;" onclick="loadAdminOrders()">Refresh Orders</button>
+            </div>
+
+            <!-- 1. New Orders Table -->
+            <div id="admin-tab-new" class="admin-tab-content">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Order ID</th>
+                            <th>Customer</th>
+                            <th>Address</th>
+                            <th>Amount</th>
+                            <th>Notification</th>
+                            <th>Driver Assignment</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-new-orders">
+                        <tr><td colspan="6" style="text-align: center; color: var(--text-muted);">Login to view orders</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- 2. Assigned Orders Table -->
+            <div id="admin-tab-assigned" class="admin-tab-content" style="display: none;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Order ID</th>
+                            <th>Customer</th>
+                            <th>Address</th>
+                            <th>Assigned Driver</th>
+                            <th>Notification</th>
+                            <th>Status & Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-assigned-orders">
+                        <tr><td colspan="6" style="text-align: center; color: var(--text-muted);">Login to view orders</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- 3. Delivered Orders Table -->
+            <div id="admin-tab-delivered" class="admin-tab-content" style="display: none;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Order ID</th>
+                            <th>Customer</th>
+                            <th>Address</th>
+                            <th>Amount</th>
+                            <th>Assigned Driver</th>
+                            <th>Notification</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-delivered-orders">
+                        <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">No delivered orders yet</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <!-- DELIVERY PARTNER VIEW -->
+    <section id="view-delivery" class="view-section">
+        <div class="admin-card">
+            <h2>Delivery Partner Dashboard</h2>
+            <div id="driver-auth-box" class="auth-bar" style="margin-top: 1rem;">
+                <span id="driver-auth-status">Not Authenticated</span>
+                <div>
+                    <input type="email" id="driver-email" placeholder="driver_a@klickit.com" value="driver_a@klickit.com" style="padding: 0.35rem; border-radius: 4px; border: 1px solid #ccc; font-size: 0.85rem;">
+                    <input type="password" id="driver-pwd" placeholder="Password" style="padding: 0.35rem; border-radius: 4px; border: 1px solid #ccc; font-size: 0.85rem;">
+                    <button class="btn-primary btn-sm" onclick="loginDriver()">Login as Partner</button>
+                </div>
+            </div>
+
+            <div id="driver-toast" class="toast"></div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem;">
+                <h3>Orders Assigned to Me</h3>
+                <button class="btn-outline btn-sm" onclick="loadDriverOrders()">Refresh</button>
+            </div>
+
+            <!-- Delivery Partner List strictly answering "Which orders do I need to deliver, and where?" -->
+            <div id="driver-orders-container" style="margin-top: 1rem;">
+                <p style="color: var(--text-muted); text-align: center; padding: 2rem 0;">Login to view assigned deliveries</p>
+            </div>
+        </div>
+    </section>
+</main>
+
+<footer>
+    KLICKIT MVP Operational System &copy; 2026. All rights reserved.
+</footer>
+
+<script type="module">
+    // Helper to escape untrusted customer-controlled values to prevent stored/reflected XSS
+    function escapeHtml(str) {
+        if (str === null || str === undefined) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    // Configurable API base URL resolution:
+    // 1. If VITE_API_URL configured at build-time: normalize trailing slashes and ensure single /api
+    // 2. If running on Vercel (*.vercel.app) without VITE_API_URL: fail fast with observable banner
+    // 3. If localhost / 127.0.0.1: point to http://localhost:8080/api (or /api if already under context)
+    // 4. If same-origin deployment (served from Spring Boot JAR): /api
+    function resolveApiBase() {
+        const rawEnvUrl = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_URL)
+            ? import.meta.env.VITE_API_URL.trim()
+            : '';
+
+        if (rawEnvUrl) {
+            const normalized = rawEnvUrl.replace(/\/+$/, '');
+            return normalized.endsWith('/api') ? normalized : (normalized + '/api');
+        }
+
+        const hostname = window.location.hostname;
+        if (hostname.endsWith('.vercel.app')) {
+            console.error('Fatal: VITE_API_URL build environment variable is not configured for Vercel deployment!');
+            const banner = document.getElementById('config-error-banner');
+            if (banner) {
+                banner.style.display = 'block';
+                banner.textContent = 'Configuration Error: VITE_API_URL environment variable is not set. Please configure VITE_API_URL in Vercel pointing to the backend API.';
+            }
+            return '';
+        }
+
+        if (hostname === 'localhost' || hostname === '127.0.0.1') {
+            return window.location.pathname.startsWith('/api') ? '/api' : 'http://localhost:8080/api';
+        }
+
+        return '/api';
+    }
+
+    const API_BASE = resolveApiBase();
+
+    function generateSessionId() {
+        return 'sess_' + crypto.randomUUID();
+    }
+
+    let currentSessionId = localStorage.getItem('klickit_session_id');
+    if (!currentSessionId) {
+        currentSessionId = generateSessionId();
+        localStorage.setItem('klickit_session_id', currentSessionId);
+    }
+
+    let adminToken = localStorage.getItem('klickit_admin_token') || '';
+    let driverToken = localStorage.getItem('klickit_driver_token') || '';
+    let deliveryPartners = [];
+    let allAdminOrders = [];
+
+    function switchMainView(viewName) {
+        document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+        document.querySelectorAll('nav .nav-btn').forEach(el => el.classList.remove('active'));
+
+        const targetView = document.getElementById('view-' + viewName);
+        if (targetView) targetView.classList.add('active');
+
+        if (event && event.target && event.target.classList.contains('nav-btn')) {
+            event.target.classList.add('active');
+        }
+
+        if (viewName === 'admin' && adminToken) {
+            loadAdminOrders();
+            loadDeliveryPartners();
+        } else if (viewName === 'delivery' && driverToken) {
+            loadDriverOrders();
+        }
+    }
+
+    function switchAdminTab(tabName) {
+        document.querySelectorAll('.admin-tab-content').forEach(el => el.style.display = 'none');
+        document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+
+        const targetTab = document.getElementById('admin-tab-' + tabName);
+        const targetBtn = document.getElementById('tab-btn-' + tabName);
+        if (targetTab) targetTab.style.display = 'block';
+        if (targetBtn) targetBtn.classList.add('active');
+    }
+
+    function showToast(id, msg, isSuccess) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.className = 'toast ' + (isSuccess ? 'toast-success' : 'toast-error');
+        el.textContent = msg;
+        el.style.display = 'block';
+        setTimeout(() => { el.style.display = 'none'; }, 4000);
+    }
+
+    // --- Customer Functions ---
+    async function loadProducts() {
+        if (!API_BASE) return;
+        try {
+            const res = await fetch(API_BASE + '/products');
+            const data = await res.json();
+            const list = document.getElementById('products-list');
+            if (!data.success || !data.data || data.data.length === 0) {
+                list.innerHTML = '<p style="color: var(--text-muted);">No products found in catalog.</p>';
+                return;
+            }
+
+            list.innerHTML = data.data.map(p => `
+                <div class="product-card">
+                    <div>
+                        <div class="product-category">${escapeHtml(p.category || 'Grocery')}</div>
+                        <div class="product-title">${escapeHtml(p.name)}</div>
+                        <div class="product-desc">${escapeHtml(p.description || '')}</div>
+                    </div>
+                    <div class="product-footer">
+                        <span class="product-price">₹${Number(p.price).toFixed(2)}</span>
+                        <button class="btn-primary btn-sm" onclick="addToCart('${p.id}')">+ Add</button>
+                    </div>
+                </div>
+            `).join('');
+        } catch (err) {
+            console.error('Failed to load products', err);
+        }
+    }
+
+    async function loadCart() {
+        if (!API_BASE) return;
+        try {
+            const res = await fetch(API_BASE + '/cart/' + currentSessionId);
+            const data = await res.json();
+            const container = document.getElementById('cart-items');
+            const checkoutBtn = document.getElementById('checkout-btn');
+
+            if (!data.success || !data.data || !data.data.items || data.data.items.length === 0) {
+                container.innerHTML = '<p style="color: var(--text-muted); font-size: 0.9rem; text-align: center; padding: 1rem 0;">Your cart is empty</p>';
+                document.getElementById('cart-subtotal').textContent = '₹0.00';
+                document.getElementById('cart-total').textContent = '₹0.00';
+                document.getElementById('cart-item-count').textContent = '(0 items)';
+                checkoutBtn.disabled = true;
+                return;
+            }
+
+            const cart = data.data;
+            document.getElementById('cart-item-count').textContent = `(${cart.itemCount} items)`;
+            document.getElementById('cart-subtotal').textContent = '₹' + Number(cart.subtotal).toFixed(2);
+            document.getElementById('cart-total').textContent = '₹' + Number(cart.subtotal).toFixed(2);
+            checkoutBtn.disabled = false;
+
+            container.innerHTML = cart.items.map(item => `
+                <div class="cart-item">
+                    <div class="cart-item-info">
+                        <strong>${escapeHtml(item.productName)}</strong><br>
+                        <span style="color: var(--text-muted);">₹${Number(item.unitPrice).toFixed(2)} × ${item.quantity}</span>
+                    </div>
+                    <div class="cart-qty-ctrl">
+                        <button class="btn-outline btn-sm" onclick="removeFromCart('${item.productId}')">-</button>
+                        <span>${item.quantity}</span>
+                        <button class="btn-outline btn-sm" onclick="addToCart('${item.productId}')">+</button>
+                    </div>
+                </div>
+            `).join('');
+        } catch (err) {
+            console.error('Failed to load cart', err);
+        }
+    }
+
+    async function addToCart(productId) {
+        if (!API_BASE) return;
+        try {
+            const res = await fetch(API_BASE + '/cart/add', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sessionId: currentSessionId, productId, quantity: 1 })
+            });
+            const data = await res.json();
+            if (data.success) {
+                loadCart();
+            } else {
+                showToast('customer-toast', data.message || 'Could not add to cart', false);
+            }
+        } catch (err) {
+            showToast('customer-toast', 'Error adding item to cart', false);
+        }
+    }
+
+    async function removeFromCart(productId) {
+        if (!API_BASE) return;
+        try {
+            const res = await fetch(API_BASE + '/cart/remove', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sessionId: currentSessionId, productId, quantity: 1 })
+            });
+            const data = await res.json();
+            if (data.success) {
+                loadCart();
+            }
+        } catch (err) {
+            showToast('customer-toast', 'Error removing item from cart', false);
+        }
+    }
+
+    async function handleCheckout(e) {
+        e.preventDefault();
+        if (!API_BASE) return;
+        const customerName = document.getElementById('cust-name').value.trim();
+        const customerPhone = document.getElementById('cust-phone').value.trim();
+        const customerAddress = document.getElementById('cust-address').value.trim();
+
+        try {
+            const res = await fetch(API_BASE + '/orders/checkout', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    sessionId: currentSessionId,
+                    customerName,
+                    customerPhone,
+                    customerAddress
+                })
+            });
+
+            const data = await res.json();
+            if (data.success) {
+                showToast('customer-toast', 'Order placed successfully! Order ID: ' + data.data.id, true);
+                currentSessionId = generateSessionId();
+                localStorage.setItem('klickit_session_id', currentSessionId);
+                loadCart();
+                document.getElementById('checkout-form').reset();
+            } else {
+                showToast('customer-toast', data.message || 'Checkout failed', false);
+            }
+        } catch (err) {
+            showToast('customer-toast', 'Network error placing order', false);
+        }
+    }
+
+    // --- Admin Functions ---
+    async function loginAdmin() {
+        if (!API_BASE) return;
+        const email = document.getElementById('admin-email').value.trim();
+        const password = document.getElementById('admin-pwd').value;
+        if (!password) {
+            alert('Please enter admin password');
+            return;
+        }
+        try {
+            const res = await fetch(API_BASE + '/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password })
+            });
+            const data = await res.json();
+            if (data.success && data.data.token) {
+                adminToken = data.data.token;
+                localStorage.setItem('klickit_admin_token', adminToken);
+                document.getElementById('admin-auth-status').textContent = 'Logged in: ' + data.data.email;
+                showToast('admin-toast', 'Admin authenticated successfully', true);
+                loadAdminOrders();
+                loadDeliveryPartners();
+            } else {
+                showToast('admin-toast', data.message || 'Login failed', false);
+            }
+        } catch (err) {
+            showToast('admin-toast', 'Authentication error', false);
+        }
+    }
+
+    async function loadDeliveryPartners() {
+        if (!adminToken || !API_BASE) return;
+        try {
+            const res = await fetch(API_BASE + '/delivery/partners', {
+                headers: { 'Authorization': 'Bearer ' + adminToken }
+            });
+            const data = await res.json();
+            if (data.success && data.data) {
+                deliveryPartners = data.data;
+                renderAdminCategoryTables();
+            }
+        } catch (err) {
+            console.error('Error loading delivery partners', err);
+        }
+    }
+
+    async function loadAdminOrders() {
+        if (!adminToken || !API_BASE) return;
+        try {
+            const res = await fetch(API_BASE + '/admin/orders', {
+                headers: { 'Authorization': 'Bearer ' + adminToken }
+            });
+            const data = await res.json();
+            if (!data.success || !data.data) {
+                return;
+            }
+
+            allAdminOrders = data.data;
+            renderAdminCategoryTables();
+        } catch (err) {
+            console.error('Error loading admin orders', err);
+        }
+    }
+
+    function renderAdminCategoryTables() {
+        // 1. New Orders (Status = PLACED)
+        const newOrders = allAdminOrders.filter(o => o.status === 'PLACED');
+        const newTable = document.getElementById('table-new-orders');
+        if (newOrders.length === 0) {
+            newTable.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">No new unassigned orders</td></tr>';
+        } else {
+            newTable.innerHTML = newOrders.map(o => {
+                const partnerOptions = deliveryPartners.map(p => 
+                    `<option value="${p.id}">${escapeHtml(p.name)}</option>`
+                ).join('');
+
+                const notifBadge = o.notificationSent
+                    ? '<span class="badge badge-delivered">Notified</span>'
+                    : '<span class="badge badge-cancelled">Not notified</span>';
+
+                return `
+                    <tr>
+                        <td><code>${o.id.substring(0, 8)}...</code></td>
+                        <td><strong>${escapeHtml(o.customerName)}</strong></td>
+                        <td>${escapeHtml(o.customerAddress)}</td>
+                        <td>₹${Number(o.totalAmount).toFixed(2)}</td>
+                        <td>${notifBadge}</td>
+                        <td>
+                            <select id="partner-select-${o.id}" style="padding: 0.25rem; font-size: 0.85rem;">
+                                <option value="">Select Partner</option>
+                                ${partnerOptions}
+                            </select>
+                            <button class="btn-primary btn-sm" onclick="assignDriver('${o.id}')">Assign Driver</button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // 2. Assigned Orders (Status = ASSIGNED)
+        const assignedOrders = allAdminOrders.filter(o => o.status === 'ASSIGNED');
+        const assignedTable = document.getElementById('table-assigned-orders');
+        if (assignedOrders.length === 0) {
+            assignedTable.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">No assigned orders in progress</td></tr>';
+        } else {
+            assignedTable.innerHTML = assignedOrders.map(o => {
+                const notifBadge = o.notificationSent
+                    ? '<span class="badge badge-delivered">Notified</span>'
+                    : '<span class="badge badge-cancelled">Not notified</span>';
+
+                return `
+                    <tr>
+                        <td><code>${o.id.substring(0, 8)}...</code></td>
+                        <td><strong>${escapeHtml(o.customerName)}</strong></td>
+                        <td>${escapeHtml(o.customerAddress)}</td>
+                        <td><strong>${escapeHtml(o.deliveryPartnerName || 'Assigned')}</strong></td>
+                        <td>${notifBadge}</td>
+                        <td>
+                            <span class="badge badge-assigned" style="margin-right: 0.5rem;">ASSIGNED</span>
+                            <select id="status-select-${o.id}" style="padding: 0.25rem; font-size: 0.85rem;">
+                                <option value="ASSIGNED" selected>ASSIGNED</option>
+                                <option value="DELIVERED">DELIVERED</option>
+                                <option value="CANCELLED">CANCELLED</option>
+                            </select>
+                            <button class="btn-outline btn-sm" onclick="updateOrderStatus('${o.id}')">Update</button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // 3. Delivered Orders (Status = DELIVERED)
+        const deliveredOrders = allAdminOrders.filter(o => o.status === 'DELIVERED');
+        const deliveredTable = document.getElementById('table-delivered-orders');
+        if (deliveredOrders.length === 0) {
+            deliveredTable.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted);">No delivered orders yet</td></tr>';
+        } else {
+            deliveredTable.innerHTML = deliveredOrders.map(o => {
+                const notifBadge = o.notificationSent
+                    ? '<span class="badge badge-delivered">Notified</span>'
+                    : '<span class="badge badge-cancelled">Not notified</span>';
+
+                return `
+                    <tr>
+                        <td><code>${o.id.substring(0, 8)}...</code></td>
+                        <td><strong>${escapeHtml(o.customerName)}</strong></td>
+                        <td>${escapeHtml(o.customerAddress)}</td>
+                        <td>₹${Number(o.totalAmount).toFixed(2)}</td>
+                        <td>${escapeHtml(o.deliveryPartnerName || 'N/A')}</td>
+                        <td>${notifBadge}</td>
+                        <td><span class="badge badge-delivered">DELIVERED</span></td>
+                    </tr>
+                `;
+            }).join('');
+        }
+    }
+
+    async function assignDriver(orderId) {
+        if (!API_BASE) return;
+        const select = document.getElementById('partner-select-' + orderId);
+        const partnerId = select ? select.value : '';
+        if (!partnerId) {
+            alert('Please select a delivery partner to assign');
+            return;
+        }
+
+        try {
+            const res = await fetch(API_BASE + '/admin/orders/' + orderId + '/assign', {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + adminToken
+                },
+                body: JSON.stringify({ deliveryPartnerId: partnerId })
+            });
+            const data = await res.json();
+            if (data.success) {
+                showToast('admin-toast', 'Delivery partner assigned successfully', true);
+                loadAdminOrders();
+            } else {
+                showToast('admin-toast', data.message || 'Assignment failed', false);
+            }
+        } catch (err) {
+            showToast('admin-toast', 'Error assigning driver', false);
+        }
+    }
+
+    async function updateOrderStatus(orderId) {
+        if (!API_BASE) return;
+        const select = document.getElementById('status-select-' + orderId);
+        const status = select ? select.value : '';
+
+        try {
+            const res = await fetch(API_BASE + '/admin/orders/' + orderId + '/status', {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + adminToken
+                },
+                body: JSON.stringify({ status })
+            });
+            const data = await res.json();
+            if (data.success) {
+                showToast('admin-toast', 'Status updated to ' + status, true);
+                loadAdminOrders();
+            } else {
+                showToast('admin-toast', data.message || 'Status update failed', false);
+            }
+        } catch (err) {
+            showToast('admin-toast', 'Error updating status', false);
+        }
+    }
+
+    // --- Delivery Partner Functions ---
+    async function loginDriver() {
+        if (!API_BASE) return;
+        const email = document.getElementById('driver-email').value.trim();
+        const password = document.getElementById('driver-pwd').value;
+        if (!password) {
+            alert('Please enter driver password');
+            return;
+        }
+        try {
+            const res = await fetch(API_BASE + '/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password })
+            });
+            const data = await res.json();
+            if (data.success && data.data.token) {
+                driverToken = data.data.token;
+                localStorage.setItem('klickit_driver_token', driverToken);
+                document.getElementById('driver-auth-status').textContent = 'Logged in: ' + data.data.email;
+                showToast('driver-toast', 'Partner authenticated', true);
+                loadDriverOrders();
+            } else {
+                showToast('driver-toast', data.message || 'Partner login failed', false);
+            }
+        } catch (err) {
+            showToast('driver-toast', 'Driver login error', false);
+        }
+    }
+
+    async function loadDriverOrders() {
+        if (!driverToken || !API_BASE) return;
+        try {
+            const res = await fetch(API_BASE + '/delivery/orders', {
+                headers: { 'Authorization': 'Bearer ' + driverToken }
+            });
+            const data = await res.json();
+            const container = document.getElementById('driver-orders-container');
+            if (!data.success || !data.data || data.data.length === 0) {
+                container.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 2rem 0;">No assigned orders currently</p>';
+                return;
+            }
+
+            container.innerHTML = data.data.map(o => {
+                const canDeliver = o.status === 'ASSIGNED';
+                const deadlineFormatted = o.deadline ? new Date(o.deadline).toLocaleTimeString() : 'Immediate';
+                return `
+                    <div class="delivery-card">
+                        <div style="flex: 1;">
+                            <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem;">
+                                <strong>Order #${o.id.substring(0, 8)}</strong>
+                                <span class="badge badge-${o.status.toLowerCase()}">${o.status}</span>
+                            </div>
+                            <div class="delivery-meta">
+                                <div><strong>Deadline:</strong> ${deadlineFormatted}</div>
+                                <div><strong>Customer Phone:</strong> <a href="tel:${escapeHtml(o.customerPhone)}">${escapeHtml(o.customerPhone)}</a></div>
+                                <div style="grid-column: span 2;"><strong>Delivery Address:</strong> ${escapeHtml(o.customerAddress)}</div>
+                            </div>
+                        </div>
+                        <div>
+                            ${canDeliver 
+                                ? `<button class="btn-success" onclick="markDelivered('${o.id}')">Mark Delivered</button>`
+                                : `<span style="color: var(--text-muted); font-weight: 700;">Completed</span>`}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        } catch (err) {
+            console.error('Error loading driver orders', err);
+        }
+    }
+
+    async function markDelivered(orderId) {
+        if (!API_BASE) return;
+        try {
+            const res = await fetch(API_BASE + '/delivery/orders/' + orderId + '/delivered', {
+                method: 'PATCH',
+                headers: { 'Authorization': 'Bearer ' + driverToken }
+            });
+            const data = await res.json();
+            if (data.success) {
+                showToast('driver-toast', 'Order marked as DELIVERED!', true);
+                loadDriverOrders();
+            } else {
+                showToast('driver-toast', data.message || 'Action failed', false);
+            }
+        } catch (err) {
+            showToast('driver-toast', 'Error marking order delivered', false);
+        }
+    }
+
+    // Explicitly expose functions to window scope for inline HTML handlers
+    window.switchMainView = switchMainView;
+    window.switchAdminTab = switchAdminTab;
+    window.addToCart = addToCart;
+    window.removeFromCart = removeFromCart;
+    window.handleCheckout = handleCheckout;
+    window.loginAdmin = loginAdmin;
+    window.loadAdminOrders = loadAdminOrders;
+    window.assignDriver = assignDriver;
+    window.updateOrderStatus = updateOrderStatus;
+    window.loginDriver = loginDriver;
+    window.loadDriverOrders = loadDriverOrders;
+    window.markDelivered = markDelivered;
+
+    // Init on page load
+    loadProducts();
+    loadCart();
+    if (adminToken) {
+        const el = document.getElementById('admin-auth-status');
+        if (el) el.textContent = 'Token Active';
+    }
+    if (driverToken) {
+        const el = document.getElementById('driver-auth-status');
+        if (el) el.textContent = 'Token Active';
+    }
+</script>
+</body>
+</html>
