@@ -257,7 +257,7 @@ class OrderEmailNotificationTest {
 
         String emailHtml = emailService.buildOrderEmailBody(order);
 
-        assertThat(emailHtml).contains("01 Oct 2026, 05:30 pm");
+        assertThat(emailHtml).contains("01 Oct 2026, 05:30 PM");
     }
 
     @Test
@@ -270,7 +270,7 @@ class OrderEmailNotificationTest {
         try {
             Locale.setDefault(Locale.US);
             String emailHtml = emailService.buildOrderEmailBody(order);
-            assertThat(emailHtml).contains("01 Oct 2026, 05:30 pm");
+            assertThat(emailHtml).contains("01 Oct 2026, 05:30 PM");
         } finally {
             Locale.setDefault(originalLocale);
         }
@@ -286,7 +286,7 @@ class OrderEmailNotificationTest {
         try {
             Locale.setDefault(Locale.FRANCE);
             String emailHtml = emailService.buildOrderEmailBody(order);
-            assertThat(emailHtml).contains("01 Oct 2026, 05:30 pm");
+            assertThat(emailHtml).contains("01 Oct 2026, 05:30 PM");
         } finally {
             Locale.setDefault(originalLocale);
         }
