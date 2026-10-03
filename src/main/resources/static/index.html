@@ -792,7 +792,14 @@
             }
 
             container.innerHTML = data.data.map(o => {
-                const canDeliver = o.status === 'ASSIGNED';
+                let actionBtn = '';
+                if (o.status === 'ASSIGNED') {
+                    actionBtn = `<button class="btn-primary" onclick="startDelivery('${o.id}')">Start Delivery</button>`;
+                } else if (o.status === 'OUT_FOR_DELIVERY') {
+                    actionBtn = `<button class="btn-success" onclick="markDelivered('${o.id}')">Mark Delivered</button>`;
+                } else {
+                    actionBtn = `<span style="color: var(--text-muted); font-weight: 700;">Completed</span>`;
+                }
                 const deadlineFormatted = o.deadline ? new Date(o.deadline).toLocaleTimeString() : 'Immediate';
                 return `
                     <div class="delivery-card">
@@ -808,15 +815,32 @@
                             </div>
                         </div>
                         <div>
-                            ${canDeliver 
-                                ? `<button class="btn-success" onclick="markDelivered('${o.id}')">Mark Delivered</button>`
-                                : `<span style="color: var(--text-muted); font-weight: 700;">Completed</span>`}
+                            ${actionBtn}
                         </div>
                     </div>
                 `;
             }).join('');
         } catch (err) {
             console.error('Error loading driver orders', err);
+        }
+    }
+
+    async function startDelivery(orderId) {
+        if (!API_BASE) return;
+        try {
+            const res = await fetch(API_BASE + '/delivery/orders/' + orderId + '/start', {
+                method: 'PATCH',
+                headers: { 'Authorization': 'Bearer ' + driverToken }
+            });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok && data.success) {
+                showToast('driver-toast', 'Order marked as OUT FOR DELIVERY!', true);
+                loadDriverOrders();
+            } else {
+                showToast('driver-toast', data.message || 'Action failed', false);
+            }
+        } catch (err) {
+            showToast('driver-toast', 'Error starting delivery', false);
         }
     }
 
@@ -827,8 +851,8 @@
                 method: 'PATCH',
                 headers: { 'Authorization': 'Bearer ' + driverToken }
             });
-            const data = await res.json();
-            if (data.success) {
+            const data = await res.json().catch(() => ({}));
+            if (res.ok && data.success) {
                 showToast('driver-toast', 'Order marked as DELIVERED!', true);
                 loadDriverOrders();
             } else {
@@ -851,6 +875,7 @@
     window.updateOrderStatus = updateOrderStatus;
     window.loginDriver = loginDriver;
     window.loadDriverOrders = loadDriverOrders;
+    window.startDelivery = startDelivery;
     window.markDelivered = markDelivered;
 
     // Init on page load
