@@ -28,7 +28,7 @@ npm run build
 npm run preview
 ```
 
-Deploy the generated `dist/` directory to a static host such as Vercel, Netlify, or Cloudflare Pages. Configure `VITE_API_BASE_URL` to your deployed backend origin when frontend and backend are hosted separately. Rebuild after changing environment variables.
+Deploy the generated `dist/` directory to a static host such as Vercel, Netlify, or Cloudflare Pages. Configure `VITE_API_BASE_URL` to your deployed backend origin (e.g. `https://klickit-backend.onrender.com`, with NO trailing slash and must NOT end in `/api`) when frontend and backend are hosted separately. Rebuild after changing environment variables.
 
 ## Backend integration notes
 
