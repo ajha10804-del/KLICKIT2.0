@@ -86,6 +86,7 @@
         .badge { padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; }
         .badge-placed { background: #fef3c7; color: #92400e; }
         .badge-assigned { background: #dbeafe; color: #1e40af; }
+        .badge-out_for_delivery { background: #e0e7ff; color: #3730a3; }
         .badge-delivered { background: #d1fae5; color: #065f46; }
         .badge-cancelled { background: #fee2e2; color: #991b1b; }
 
@@ -634,8 +635,8 @@
             }).join('');
         }
 
-        // 2. Assigned Orders (Status = ASSIGNED)
-        const assignedOrders = allAdminOrders.filter(o => o.status === 'ASSIGNED');
+        // 2. Assigned Orders (Status = ASSIGNED or OUT_FOR_DELIVERY)
+        const assignedOrders = allAdminOrders.filter(o => o.status === 'ASSIGNED' || o.status === 'OUT_FOR_DELIVERY');
         const assignedTable = document.getElementById('table-assigned-orders');
         if (assignedOrders.length === 0) {
             assignedTable.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">No assigned orders in progress</td></tr>';
@@ -645,6 +646,13 @@
                     ? '<span class="badge badge-delivered">Notified</span>'
                     : '<span class="badge badge-cancelled">Not notified</span>';
 
+                let optionsHtml = '';
+                if (o.status === 'ASSIGNED') {
+                    optionsHtml = '<option value="OUT_FOR_DELIVERY">OUT_FOR_DELIVERY</option><option value="CANCELLED">CANCELLED</option>';
+                } else if (o.status === 'OUT_FOR_DELIVERY') {
+                    optionsHtml = '<option value="DELIVERED">DELIVERED</option><option value="CANCELLED">CANCELLED</option>';
+                }
+
                 return `
                     <tr>
                         <td><code>${o.id.substring(0, 8)}...</code></td>
@@ -653,11 +661,9 @@
                         <td><strong>${escapeHtml(o.deliveryPartnerName || 'Assigned')}</strong></td>
                         <td>${notifBadge}</td>
                         <td>
-                            <span class="badge badge-assigned" style="margin-right: 0.5rem;">ASSIGNED</span>
+                            <span class="badge badge-${o.status.toLowerCase()}" style="margin-right: 0.5rem;">${o.status}</span>
                             <select id="status-select-${o.id}" style="padding: 0.25rem; font-size: 0.85rem;">
-                                <option value="ASSIGNED" selected>ASSIGNED</option>
-                                <option value="DELIVERED">DELIVERED</option>
-                                <option value="CANCELLED">CANCELLED</option>
+                                ${optionsHtml}
                             </select>
                             <button class="btn-outline btn-sm" onclick="updateOrderStatus('${o.id}')">Update</button>
                         </td>
@@ -736,8 +742,8 @@
                 },
                 body: JSON.stringify({ status })
             });
-            const data = await res.json();
-            if (data.success) {
+            const data = await res.json().catch(() => ({}));
+            if (res.ok && data.success) {
                 showToast('admin-toast', 'Status updated to ' + status, true);
                 loadAdminOrders();
             } else {
@@ -809,9 +815,11 @@
                                 <span class="badge badge-${o.status.toLowerCase()}">${o.status}</span>
                             </div>
                             <div class="delivery-meta">
-                                <div><strong>Deadline:</strong> ${deadlineFormatted}</div>
+                                <div><strong>Customer:</strong> ${escapeHtml(o.customerName || 'N/A')}</div>
                                 <div><strong>Customer Phone:</strong> <a href="tel:${escapeHtml(o.customerPhone)}">${escapeHtml(o.customerPhone)}</a></div>
-                                <div style="grid-column: span 2;"><strong>Delivery Address:</strong> ${escapeHtml(o.customerAddress)}</div>
+                                <div><strong>Delivery Address:</strong> ${escapeHtml(o.customerAddress)}</div>
+                                <div><strong>Amount to Collect:</strong> <span style="font-weight: 700; color: #065f46;">₹${Number(o.totalAmount || 0).toFixed(2)}</span></div>
+                                <div><strong>Deadline:</strong> ${deadlineFormatted}</div>
                             </div>
                         </div>
                         <div>
