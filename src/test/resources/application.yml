@@ -27,3 +27,6 @@ klickit:
     expiration-ms: 3600000
   cors:
     allowed-origins: http://localhost:3000,http://localhost:5173,http://localhost:8080
+  delivery:
+    fee: 25.00
+    free-threshold: 199.00

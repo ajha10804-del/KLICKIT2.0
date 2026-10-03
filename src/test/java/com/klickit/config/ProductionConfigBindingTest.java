@@ -208,4 +208,18 @@ class ProductionConfigBindingTest {
 
         assertThat(envNoBootstrap.getProperty("klickit.bootstrap.admin.password")).isEmpty();
     }
+
+    // ── klickit.delivery.* ──────────────────────────────────────────
+
+    @Test
+    @DisplayName("klickit.delivery.fee defaults to 25.00 when DELIVERY_FEE is unset")
+    void deliveryFeeDefaultsTo25() {
+        assertThat(env.getProperty("klickit.delivery.fee")).isEqualTo("25.00");
+    }
+
+    @Test
+    @DisplayName("klickit.delivery.free-threshold defaults to 199.00 when DELIVERY_FREE_THRESHOLD is unset")
+    void freeDeliveryThresholdDefaultsTo199() {
+        assertThat(env.getProperty("klickit.delivery.free-threshold")).isEqualTo("199.00");
+    }
 }

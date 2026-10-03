@@ -16,7 +16,7 @@ import com.klickit.order.entity.OrderStatus;
 import com.klickit.order.event.OrderCreatedEvent;
 import com.klickit.order.repository.OrderRepository;
 import com.klickit.user.entity.Role;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
@@ -51,13 +51,24 @@ public class OrderService {
     private final DeliveryPartnerRepository deliveryPartnerRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final Clock clock;
+    private final BigDecimal defaultDeliveryFee;
+    private final BigDecimal freeDeliveryThreshold;
 
     public OrderService(
             OrderRepository orderRepository,
             CartRepository cartRepository,
             DeliveryPartnerRepository deliveryPartnerRepository,
             ApplicationEventPublisher eventPublisher) {
-        this(orderRepository, cartRepository, deliveryPartnerRepository, eventPublisher, Clock.systemUTC());
+        this(orderRepository, cartRepository, deliveryPartnerRepository, eventPublisher, Clock.systemUTC(), new BigDecimal("25.00"), new BigDecimal("199.00"));
+    }
+
+    public OrderService(
+            OrderRepository orderRepository,
+            CartRepository cartRepository,
+            DeliveryPartnerRepository deliveryPartnerRepository,
+            ApplicationEventPublisher eventPublisher,
+            Clock clock) {
+        this(orderRepository, cartRepository, deliveryPartnerRepository, eventPublisher, clock, new BigDecimal("25.00"), new BigDecimal("199.00"));
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -66,12 +77,16 @@ public class OrderService {
             CartRepository cartRepository,
             DeliveryPartnerRepository deliveryPartnerRepository,
             ApplicationEventPublisher eventPublisher,
-            @org.springframework.beans.factory.annotation.Autowired(required = false) Clock clock) {
+            @org.springframework.beans.factory.annotation.Autowired(required = false) Clock clock,
+            @Value("${klickit.delivery.fee:25.00}") BigDecimal defaultDeliveryFee,
+            @Value("${klickit.delivery.free-threshold:199.00}") BigDecimal freeDeliveryThreshold) {
         this.orderRepository = orderRepository;
         this.cartRepository = cartRepository;
         this.deliveryPartnerRepository = deliveryPartnerRepository;
         this.eventPublisher = eventPublisher;
         this.clock = clock != null ? clock : Clock.systemUTC();
+        this.defaultDeliveryFee = defaultDeliveryFee != null ? defaultDeliveryFee : new BigDecimal("25.00");
+        this.freeDeliveryThreshold = freeDeliveryThreshold != null ? freeDeliveryThreshold : new BigDecimal("199.00");
     }
 
     @Transactional
@@ -95,12 +110,12 @@ public class OrderService {
                 .totalAmount(BigDecimal.ZERO)
                 .build();
 
-        BigDecimal total = BigDecimal.ZERO;
+        BigDecimal subtotal = BigDecimal.ZERO;
 
         for (CartItem cartItem : cart.getItems()) {
             BigDecimal lineTotal = cartItem.getUnitPrice()
                     .multiply(BigDecimal.valueOf(cartItem.getQuantity()));
-            total = total.add(lineTotal);
+            subtotal = subtotal.add(lineTotal);
 
             OrderItem orderItem = OrderItem.builder()
                     .productName(cartItem.getProductName())
@@ -110,7 +125,12 @@ public class OrderService {
             order.addItem(orderItem);
         }
 
-        order.setTotalAmount(total);
+        BigDecimal fee = subtotal.compareTo(freeDeliveryThreshold) < 0
+                ? this.defaultDeliveryFee
+                : BigDecimal.ZERO;
+
+        order.setDeliveryFee(fee);
+        order.setTotalAmount(subtotal.add(fee));
         Order saved = orderRepository.save(order);
 
         cart.getItems().clear();

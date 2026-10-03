@@ -23,6 +23,7 @@ public class OrderResponse {
     private final String customerEmail;
     private final Instant deadline;
     private final BigDecimal totalAmount;
+    private final BigDecimal deliveryFee;
     private final UUID deliveryPartnerId;
     private final String deliveryPartnerName;
     private final String deliveryPartnerPhone;
@@ -44,6 +45,7 @@ public class OrderResponse {
                 .customerEmail(order.getCustomerEmail())
                 .deadline(order.getDeadline())
                 .totalAmount(order.getTotalAmount())
+                .deliveryFee(order.getDeliveryFee() != null ? order.getDeliveryFee() : BigDecimal.ZERO)
                 .deliveryPartnerId(order.getDeliveryPartnerId())
                 .deliveryPartnerName(order.getDeliveryPartnerName())
                 .deliveryPartnerPhone(order.getDeliveryPartnerPhone())

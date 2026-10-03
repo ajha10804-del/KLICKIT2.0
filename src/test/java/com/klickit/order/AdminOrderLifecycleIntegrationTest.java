@@ -235,7 +235,8 @@ class AdminOrderLifecycleIntegrationTest {
         assertThat(createdOrder).isNotNull();
         assertThat(createdOrder.getId()).isEqualTo(orderId);
         assertThat(createdOrder.getStatus()).isEqualTo(OrderStatus.PLACED);
-        assertThat(createdOrder.getTotalAmount()).isEqualByComparingTo(new BigDecimal("68.00"));
+        assertThat(createdOrder.getTotalAmount()).isEqualByComparingTo(new BigDecimal("93.00"));
+        assertThat(createdOrder.getDeliveryFee()).isEqualByComparingTo(new BigDecimal("25.00"));
 
         // ---------------------------------------------------------------------
         // STEP 2 & 3: Admin authenticates and retrieves order

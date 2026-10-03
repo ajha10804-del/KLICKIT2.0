@@ -46,6 +46,10 @@ public class Order extends BaseEntity {
     @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal totalAmount;
 
+    @Builder.Default
+    @Column(name = "delivery_fee", nullable = false, precision = 10, scale = 2)
+    private BigDecimal deliveryFee = BigDecimal.ZERO;
+
     private UUID deliveryPartnerId;
 
     private String deliveryPartnerName;

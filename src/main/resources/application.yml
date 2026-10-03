@@ -66,6 +66,9 @@ klickit:
       password: ${BOOTSTRAP_ADMIN_PASSWORD:}
   seed:
     demo-products: ${SEED_DEMO_PRODUCTS:false}
+  delivery:
+    fee: ${DELIVERY_FEE:25.00}
+    free-threshold: ${DELIVERY_FREE_THRESHOLD:199.00}
 
 server:
   port: ${PORT:8080}
