@@ -14,6 +14,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -47,13 +48,20 @@ public class AdminOrderController {
         return ResponseEntity.ok(ApiResponse.success(order));
     }
 
-    @Operation(summary = "Assign delivery partner", description = "Admin-only endpoint to assign an order to a delivery partner")
-    @PatchMapping("/{id}/assign")
+    @Operation(summary = "Assign delivery partner and approve order", description = "Admin-only endpoint to assign an order to a delivery partner and approve it")
+    @PatchMapping({"/{id}/assign", "/{id}/approve"})
     public ResponseEntity<ApiResponse<OrderResponse>> assignDeliveryPartner(
             @PathVariable UUID id,
             @Valid @RequestBody AssignDeliveryRequest request) {
         OrderResponse order = orderService.assignDeliveryPartner(id, request);
         return ResponseEntity.ok(ApiResponse.success("Delivery partner assigned", order));
+    }
+
+    @Operation(summary = "Reject order", description = "Admin-only endpoint to reject a pending order")
+    @PostMapping("/{id}/reject")
+    public ResponseEntity<ApiResponse<OrderResponse>> rejectOrder(@PathVariable UUID id) {
+        OrderResponse order = orderService.rejectOrder(id);
+        return ResponseEntity.ok(ApiResponse.success("Order rejected", order));
     }
 
     @Operation(summary = "Update order status", description = "Admin-only endpoint to update an order's lifecycle status")

@@ -341,6 +341,67 @@ class OrderAuthorizationSecurityTest {
                 .andExpect(jsonPath("$.data.status").value("CANCELLED"));
     }
 
+    @Test
+    @WithMockUser(username = "admin@klickit.com", roles = {"ADMIN"})
+    @DisplayName("Admin rejecting an order returns 200 OK")
+    void admin_rejectOrder_returns200() throws Exception {
+        UUID orderId = UUID.randomUUID();
+        OrderResponse rejectedOrder = createSampleOrder(orderId, "customerA@klickit.com", OrderStatus.REJECTED);
+        when(orderService.rejectOrder(orderId)).thenReturn(rejectedOrder);
+
+        mockMvc.perform(post("/admin/orders/" + orderId + "/reject"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").value("Order rejected"))
+                .andExpect(jsonPath("$.data.status").value("REJECTED"));
+    }
+
+    @Test
+    @WithMockUser(username = "customer@klickit.com", roles = {"CUSTOMER"})
+    @DisplayName("CUSTOMER accessing admin reject order returns 403 Forbidden")
+    void customer_rejectOrder_returns403() throws Exception {
+        UUID orderId = UUID.randomUUID();
+        mockMvc.perform(post("/admin/orders/" + orderId + "/reject"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "driver@klickit.com", roles = {"DELIVERY_PARTNER"})
+    @DisplayName("DELIVERY_PARTNER accessing admin reject order returns 403 Forbidden")
+    void driver_rejectOrder_returns403() throws Exception {
+        UUID orderId = UUID.randomUUID();
+        mockMvc.perform(post("/admin/orders/" + orderId + "/reject"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "admin@klickit.com", roles = {"ADMIN"})
+    @DisplayName("Admin approving order via /approve endpoint returns 200 OK")
+    void admin_approveOrder_returns200() throws Exception {
+        UUID orderId = UUID.randomUUID();
+        UUID partnerId = UUID.randomUUID();
+        OrderResponse assignedOrder = createSampleOrder(orderId, "customerA@klickit.com", OrderStatus.ASSIGNED);
+        when(orderService.assignDeliveryPartner(eq(orderId), any(AssignDeliveryRequest.class))).thenReturn(assignedOrder);
+
+        mockMvc.perform(patch("/admin/orders/" + orderId + "/approve")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new AssignDeliveryRequest(partnerId))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.status").value("ASSIGNED"));
+    }
+
+    @Test
+    @WithMockUser(username = "customer@klickit.com", roles = {"CUSTOMER"})
+    @DisplayName("CUSTOMER accessing admin approve endpoint returns 403 Forbidden")
+    void customer_approveOrder_returns403() throws Exception {
+        UUID orderId = UUID.randomUUID();
+        mockMvc.perform(patch("/admin/orders/" + orderId + "/approve")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new AssignDeliveryRequest(UUID.randomUUID()))))
+                .andExpect(status().isForbidden());
+    }
+
     private OrderResponse createSampleOrder(UUID id, String customerEmail) {
         return createSampleOrder(id, customerEmail, OrderStatus.PLACED);
     }

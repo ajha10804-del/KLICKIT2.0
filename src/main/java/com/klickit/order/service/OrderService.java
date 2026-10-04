@@ -39,9 +39,10 @@ import java.util.UUID;
 public class OrderService {
 
     private static final Map<OrderStatus, Set<OrderStatus>> ALLOWED_TRANSITIONS = Map.of(
-            OrderStatus.PLACED, Set.of(OrderStatus.ASSIGNED, OrderStatus.CANCELLED),
+            OrderStatus.PLACED, Set.of(OrderStatus.ASSIGNED, OrderStatus.REJECTED, OrderStatus.CANCELLED),
             OrderStatus.ASSIGNED, Set.of(OrderStatus.OUT_FOR_DELIVERY, OrderStatus.CANCELLED),
             OrderStatus.OUT_FOR_DELIVERY, Set.of(OrderStatus.DELIVERED, OrderStatus.CANCELLED),
+            OrderStatus.REJECTED, Set.of(),
             OrderStatus.DELIVERED, Set.of(),
             OrderStatus.CANCELLED, Set.of()
     );
@@ -197,7 +198,26 @@ public class OrderService {
                     String.format("Cannot transition order from %s to %s", currentStatus, newStatus));
         }
 
+        if (newStatus == OrderStatus.ASSIGNED && order.getDeliveryPartnerId() == null) {
+            throw new IllegalStateException("Cannot transition order to ASSIGNED without an assigned delivery partner");
+        }
+
         order.setStatus(newStatus);
+        Order updated = orderRepository.save(order);
+        return OrderResponse.from(updated);
+    }
+
+    @Transactional
+    public OrderResponse rejectOrder(UUID id) {
+        validateAdminAccess();
+        Order order = findOrderOrThrow(id);
+
+        if (order.getStatus() != OrderStatus.PLACED) {
+            throw new IllegalStateException(
+                    String.format("Cannot transition order from %s to %s", order.getStatus(), OrderStatus.REJECTED));
+        }
+
+        order.setStatus(OrderStatus.REJECTED);
         Order updated = orderRepository.save(order);
         return OrderResponse.from(updated);
     }
@@ -213,6 +233,9 @@ public class OrderService {
         }
         if (currentStatus == OrderStatus.DELIVERED) {
             throw new IllegalStateException("Cannot cancel a delivered order");
+        }
+        if (currentStatus == OrderStatus.REJECTED) {
+            throw new IllegalStateException("Cannot cancel a rejected order");
         }
 
         Set<OrderStatus> allowed = ALLOWED_TRANSITIONS.getOrDefault(currentStatus, Set.of());
@@ -236,6 +259,17 @@ public class OrderService {
         }
         if (order.getStatus() == OrderStatus.DELIVERED) {
             throw new IllegalStateException("Cannot assign delivery to a delivered order");
+        }
+        if (order.getStatus() == OrderStatus.REJECTED) {
+            throw new IllegalStateException("Cannot assign delivery to a rejected order");
+        }
+        if (order.getStatus() != OrderStatus.PLACED) {
+            throw new IllegalStateException(
+                    String.format("Cannot transition order from %s to ASSIGNED", order.getStatus()));
+        }
+
+        if (request == null || request.getDeliveryPartnerId() == null) {
+            throw new IllegalArgumentException("Delivery partner ID is required");
         }
 
         DeliveryPartner partner = deliveryPartnerRepository.findById(request.getDeliveryPartnerId())
