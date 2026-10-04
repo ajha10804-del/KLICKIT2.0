@@ -8,6 +8,7 @@ import com.klickit.config.SecurityConfig;
 import com.klickit.delivery.controller.DeliveryController;
 import com.klickit.delivery.dto.DeliveryPartnerResponse;
 import com.klickit.delivery.service.DeliveryService;
+import com.klickit.order.dto.OrderItemResponse;
 import com.klickit.order.dto.OrderResponse;
 import com.klickit.order.entity.OrderStatus;
 import org.junit.jupiter.api.DisplayName;
@@ -67,8 +68,16 @@ class DeliveryPartnerSecurityTest {
     }
 
     @Test
+    @WithMockUser(username = "admin@klickit.com", roles = {"ADMIN"})
+    @DisplayName("ADMIN role cannot access /delivery/orders (403 Forbidden)")
+    void admin_cannotAccessDeliveryOrders() throws Exception {
+        mockMvc.perform(get("/delivery/orders"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     @WithMockUser(username = "partnerA@klickit.com", roles = {"DELIVERY_PARTNER"})
-    @DisplayName("DELIVERY_PARTNER retrieves their assigned orders via JWT identity (200 OK)")
+    @DisplayName("DELIVERY_PARTNER retrieves their assigned orders with items and COD breakdown via JWT identity (200 OK)")
     void deliveryPartner_retrievesOwnOrders() throws Exception {
         UUID orderAId = UUID.randomUUID();
         OrderResponse orderA = OrderResponse.builder()
@@ -76,9 +85,26 @@ class DeliveryPartnerSecurityTest {
                 .customerName("Customer A")
                 .customerPhone("9876543210")
                 .customerAddress("Hostel 1")
+                .subtotal(new BigDecimal("95.00"))
+                .deliveryFee(new BigDecimal("25.00"))
                 .totalAmount(new BigDecimal("120.00"))
                 .status(OrderStatus.ASSIGNED)
-                .items(List.of())
+                .items(List.of(
+                        OrderItemResponse.builder()
+                                .productName("Maggi")
+                                .quantity(2)
+                                .price(new BigDecimal("35.00"))
+                                .unitPrice(new BigDecimal("35.00"))
+                                .lineTotal(new BigDecimal("70.00"))
+                                .build(),
+                        OrderItemResponse.builder()
+                                .productName("Coke")
+                                .quantity(1)
+                                .price(new BigDecimal("25.00"))
+                                .unitPrice(new BigDecimal("25.00"))
+                                .lineTotal(new BigDecimal("25.00"))
+                                .build()
+                ))
                 .createdAt(Instant.now())
                 .build();
 
@@ -88,7 +114,20 @@ class DeliveryPartnerSecurityTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data[0].id").value(orderAId.toString()))
-                .andExpect(jsonPath("$.data[0].customerName").value("Customer A"));
+                .andExpect(jsonPath("$.data[0].customerName").value("Customer A"))
+                .andExpect(jsonPath("$.data[0].subtotal").value(95.00))
+                .andExpect(jsonPath("$.data[0].deliveryFee").value(25.00))
+                .andExpect(jsonPath("$.data[0].totalAmount").value(120.00))
+                .andExpect(jsonPath("$.data[0].items[0].productName").value("Maggi"))
+                .andExpect(jsonPath("$.data[0].items[0].quantity").value(2))
+                .andExpect(jsonPath("$.data[0].items[0].unitPrice").value(35.00))
+                .andExpect(jsonPath("$.data[0].items[0].price").value(35.00))
+                .andExpect(jsonPath("$.data[0].items[0].lineTotal").value(70.00))
+                .andExpect(jsonPath("$.data[0].items[1].productName").value("Coke"))
+                .andExpect(jsonPath("$.data[0].items[1].quantity").value(1))
+                .andExpect(jsonPath("$.data[0].items[1].unitPrice").value(25.00))
+                .andExpect(jsonPath("$.data[0].items[1].price").value(25.00))
+                .andExpect(jsonPath("$.data[0].items[1].lineTotal").value(25.00));
     }
 
     @Test

@@ -24,6 +24,7 @@ public class OrderResponse {
     private final Instant deadline;
     private final BigDecimal totalAmount;
     private final BigDecimal deliveryFee;
+    private final BigDecimal subtotal;
     private final UUID deliveryPartnerId;
     private final String deliveryPartnerName;
     private final String deliveryPartnerPhone;
@@ -37,6 +38,10 @@ public class OrderResponse {
                 ? order.getItems().stream().map(OrderItemResponse::from).toList()
                 : List.of();
 
+        BigDecimal fee = order.getDeliveryFee() != null ? order.getDeliveryFee() : BigDecimal.ZERO;
+        BigDecimal total = order.getTotalAmount() != null ? order.getTotalAmount() : BigDecimal.ZERO;
+        BigDecimal subtotal = total.subtract(fee);
+
         return OrderResponse.builder()
                 .id(order.getId())
                 .customerName(order.getCustomerName())
@@ -44,8 +49,9 @@ public class OrderResponse {
                 .customerAddress(order.getCustomerAddress())
                 .customerEmail(order.getCustomerEmail())
                 .deadline(order.getDeadline())
-                .totalAmount(order.getTotalAmount())
-                .deliveryFee(order.getDeliveryFee() != null ? order.getDeliveryFee() : BigDecimal.ZERO)
+                .totalAmount(total)
+                .deliveryFee(fee)
+                .subtotal(subtotal)
                 .deliveryPartnerId(order.getDeliveryPartnerId())
                 .deliveryPartnerName(order.getDeliveryPartnerName())
                 .deliveryPartnerPhone(order.getDeliveryPartnerPhone())

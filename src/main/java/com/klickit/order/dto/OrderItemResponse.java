@@ -15,6 +15,7 @@ public class OrderItemResponse {
     private final String productName;
     private final int quantity;
     private final BigDecimal price;
+    private final BigDecimal unitPrice;
     private final BigDecimal lineTotal;
 
     public static OrderItemResponse from(OrderItem item) {
@@ -22,6 +23,7 @@ public class OrderItemResponse {
                 .productName(item.getProductName())
                 .quantity(item.getQuantity())
                 .price(item.getPrice())
+                .unitPrice(item.getPrice())
                 .lineTotal(item.getPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
                 .build();
     }

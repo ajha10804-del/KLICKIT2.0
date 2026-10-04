@@ -2,6 +2,7 @@ package com.klickit.order.repository;
 
 import com.klickit.order.entity.Order;
 import com.klickit.order.entity.OrderStatus;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -18,6 +19,7 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
 
     List<Order> findAllByOrderByCreatedAtDesc();
 
+    @EntityGraph(attributePaths = {"items"})
     List<Order> findByDeliveryPartnerIdAndStatusInOrderByDeadlineAsc(
             UUID deliveryPartnerId, List<OrderStatus> statuses);
 

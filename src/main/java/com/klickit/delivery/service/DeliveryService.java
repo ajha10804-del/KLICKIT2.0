@@ -74,11 +74,13 @@ public class DeliveryService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
     public List<OrderResponse> getMyAssignedOrders() {
         DeliveryPartner partner = getAuthenticatedDeliveryPartner();
         return getOrdersForPartner(partner.getId());
     }
 
+    @Transactional(readOnly = true)
     public List<OrderResponse> getAssignedOrders(UUID partnerId) {
         DeliveryPartner currentPartner = getAuthenticatedDeliveryPartner();
         if (!currentPartner.getId().equals(partnerId)) {
