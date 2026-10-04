@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
+import AdminDashboard from './admin and deliverydashboard/AdminDashboard.jsx';
+import DeliveryDashboard from './admin and deliverydashboard/DeliveryDashboard.jsx';
 
 const API = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 const categories = [
@@ -58,7 +60,81 @@ function isValidPhoneNumber(ph) {
   return true;
 }
 
+// Role Barrier UI Components
+function AdminAccessBarrier({ user, onSignIn, onBackToStore }) {
+  const isWrongRole = user && user.role !== 'ADMIN';
+
+  return (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8faf9', padding: '20px', fontFamily: 'Inter, sans-serif' }}>
+      <div style={{ maxWidth: '440px', width: '100%', background: '#fff', borderRadius: '16px', padding: '32px', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.06)', textAlign: 'center', border: '1px solid #e5e7eb' }}>
+        <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: '#fee2e2', color: '#dc2626', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', margin: '0 auto 16px' }}>
+          🛡️
+        </div>
+        <h2 style={{ fontSize: '20px', fontWeight: '700', color: '#111827', marginBottom: '8px' }}>
+          {isWrongRole ? 'Access Denied (403 Forbidden)' : 'Admin Authentication Required'}
+        </h2>
+        <p style={{ fontSize: '13px', color: '#6b7280', lineHeight: '1.5', marginBottom: '24px' }}>
+          {isWrongRole
+            ? `You are currently signed in as "${user.name || user.email}" with role "${user.role || 'CUSTOMER'}". You do not have permission to access the Administrator Portal.`
+            : 'You must be signed in with an authorized Administrator account to view and manage store operations.'}
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <button
+            onClick={onSignIn}
+            style={{ width: '100%', padding: '12px', background: '#0c831f', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '600', fontSize: '13px', cursor: 'pointer' }}
+          >
+            {isWrongRole ? 'Switch to Admin Account' : 'Sign In as Administrator'}
+          </button>
+          <button
+            onClick={onBackToStore}
+            style={{ width: '100%', padding: '12px', background: '#f3f4f6', color: '#374151', border: '1px solid #e5e7eb', borderRadius: '8px', fontWeight: '600', fontSize: '13px', cursor: 'pointer' }}
+          >
+            Return to Customer Storefront
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DeliveryAccessBarrier({ user, onSignIn, onBackToStore }) {
+  const isWrongRole = user && user.role !== 'DELIVERY_PARTNER';
+
+  return (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8faf9', padding: '20px', fontFamily: 'Inter, sans-serif' }}>
+      <div style={{ maxWidth: '440px', width: '100%', background: '#fff', borderRadius: '16px', padding: '32px', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.06)', textAlign: 'center', border: '1px solid #e5e7eb' }}>
+        <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: '#ede9fe', color: '#7c3aed', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', margin: '0 auto 16px' }}>
+          🚴
+        </div>
+        <h2 style={{ fontSize: '20px', fontWeight: '700', color: '#111827', marginBottom: '8px' }}>
+          {isWrongRole ? 'Access Denied (403 Forbidden)' : 'Driver Authentication Required'}
+        </h2>
+        <p style={{ fontSize: '13px', color: '#6b7280', lineHeight: '1.5', marginBottom: '24px' }}>
+          {isWrongRole
+            ? `You are currently signed in as "${user.name || user.email}" with role "${user.role || 'CUSTOMER'}". You do not have permission to access the Delivery Partner Portal.`
+            : 'You must be signed in with a registered Delivery Partner account to view assigned orders and update delivery status.'}
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <button
+            onClick={onSignIn}
+            style={{ width: '100%', padding: '12px', background: '#7c3aed', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '600', fontSize: '13px', cursor: 'pointer' }}
+          >
+            {isWrongRole ? 'Switch to Driver Account' : 'Sign In as Delivery Partner'}
+          </button>
+          <button
+            onClick={onBackToStore}
+            style={{ width: '100%', padding: '12px', background: '#f3f4f6', color: '#374151', border: '1px solid #e5e7eb', borderRadius: '8px', fontWeight: '600', fontSize: '13px', cursor: 'pointer' }}
+          >
+            Return to Customer Storefront
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function App() {
+  const [currentPath, setCurrentPath] = useState(() => window.location.pathname);
   const [products, setProducts] = useState(seedProducts);
   const [catalogError, setCatalogError] = useState(false);
   const [activeCategory, setActiveCategory] = useState('All');
@@ -89,6 +165,21 @@ function App() {
   const [editingPhone, setEditingPhone] = useState(false);
   const [phoneInput, setPhoneInput] = useState('');
 
+  // Client-side router navigation
+  useEffect(() => {
+    const handlePopState = () => setCurrentPath(window.location.pathname);
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  function navigate(path) {
+    if (window.location.pathname !== path) {
+      window.history.pushState(null, '', path);
+      setCurrentPath(path);
+      window.scrollTo(0, 0);
+    }
+  }
+
   useEffect(() => {
     fetch(`${API}/api/products`).then(r => r.ok ? r.json() : Promise.reject()).then(data => {
       const list = Array.isArray(data) ? data : (data?.content || data?.data || data?.products || []);
@@ -107,7 +198,7 @@ function App() {
   const subtotal = cartItems.reduce((sum, p) => sum + p.price * p.qty, 0);
   const delivery = subtotal === 0 || subtotal >= 199 ? 0 : 25;
   const discount = cartItems.reduce((sum, p) => sum + Math.max(0, p.mrp - p.price) * p.qty, 0);
-  const notify = message => { setToast(message); window.setTimeout(() => setToast(''), 2600); };
+  const notify = message => { setToast(message); window.setTimeout(() => setToast(''), 2800); };
   const changeQty = (id, delta) => setCart(prev => { const next = { ...prev, [id]: Math.max(0, (prev[id] || 0) + delta) }; if (!next[id]) delete next[id]; return next; });
 
   const [activeOrder, setActiveOrder] = useState(null);
@@ -186,6 +277,9 @@ function App() {
     setAccountOpen(false);
     setEditingPhone(false);
     notify('Signed out successfully.');
+    if (currentPath === '/admin' || currentPath === '/delivery') {
+      navigate('/');
+    }
   }
 
   async function fetchOrder(orderId) {
@@ -268,10 +362,23 @@ function App() {
       const profile = {
         name: resUser?.name || authForm.name || authForm.email.split('@')[0],
         email: resUser?.email || authForm.email,
-        phone: resUser?.phone || authForm.phone || ''
+        phone: resUser?.phone || authForm.phone || '',
+        role: resUser?.role || 'CUSTOMER'
       };
-      localStorage.setItem('klickit_user', JSON.stringify(profile)); setUser(profile); setAuthOpen(false); notify(`Welcome${profile.name ? `, ${profile.name}` : ''}!`);
-    } catch (err) { notify(err.message === 'Failed to fetch' ? 'Could not connect to the server. Check that your backend is running.' : err.message); }
+      localStorage.setItem('klickit_user', JSON.stringify(profile));
+      setUser(profile);
+      setAuthOpen(false);
+      notify(`Welcome${profile.name ? `, ${profile.name}` : ''}!`);
+
+      // Automatic role-based routing redirection
+      if (profile.role === 'ADMIN') {
+        navigate('/admin');
+      } else if (profile.role === 'DELIVERY_PARTNER') {
+        navigate('/delivery');
+      }
+    } catch (err) {
+      notify(err.message === 'Failed to fetch' ? 'Could not connect to the server. Check that your backend is running.' : err.message);
+    }
     finally { setLoading(false); }
   }
 
@@ -348,41 +455,156 @@ function App() {
 
       const checkoutBody = await checkoutRes.json().catch(() => ({}));
       if (!checkoutRes.ok || !checkoutBody.success) {
-        throw new Error(checkoutBody.message || 'Could not place your order. Please try again.');
+        throw new Error(checkoutBody.message || 'Checkout failed. Please try again.');
       }
 
-      // 8. On success: clear local cart, close cart drawer, open Order Confirmation & Tracking
-      const order = checkoutBody.data;
+      // 8. On success: clear local cart, close cart drawer, and open tracking modal with real order
+      const placedOrder = checkoutBody.data;
       setCart({});
       setCartOpen(false);
-      openTracking(order);
-      notify('Order placed successfully!');
+      notify('Order placed successfully! Tracking your delivery…');
+      openTracking(placedOrder);
+
     } catch (err) {
-      // On failure: local cart remains untouched so customer can retry
       notify(err.message === 'Failed to fetch' ? 'Could not connect to the server. Check your backend URL.' : err.message);
     }
     finally { setLoading(false); }
   }
 
-  const lifecycleStages = ['PLACED', 'ASSIGNED', 'OUT_FOR_DELIVERY', 'DELIVERED'];
+  // Lifecycle stages matching real backend order lifecycle
+  const lifecycleStages = ['PLACED', 'READY_TO_ASSIGN', 'ASSIGNED', 'OUT_FOR_DELIVERY', 'DELIVERED'];
   const stageLabels = {
-    PLACED: 'Placed',
-    ASSIGNED: 'Assigned',
+    PLACED: 'Order Placed',
+    READY_TO_ASSIGN: 'Approved (Preparing)',
+    ASSIGNED: 'Driver Assigned',
     OUT_FOR_DELIVERY: 'Out for Delivery',
     DELIVERED: 'Delivered'
   };
 
   const currentStatus = activeOrder?.status;
   const isCancelled = currentStatus === 'CANCELLED';
+  const isRejected = currentStatus === 'REJECTED';
   const currentStageIndex = lifecycleStages.indexOf(currentStatus);
 
+  // ROUTE DISPATCH: Admin Dashboard
+  if (currentPath === '/admin' || currentPath.startsWith('/admin/')) {
+    if (user?.role === 'ADMIN') {
+      return (
+        <>
+          <AdminDashboard
+            user={user}
+            onSignOut={handleSignOut}
+            onNavigateStore={() => navigate('/')}
+            notify={notify}
+          />
+          {toast && <div className="toast"><span>✦</span>{toast}</div>}
+        </>
+      );
+    }
+    return (
+      <>
+        <AdminAccessBarrier
+          user={user}
+          onSignIn={() => { setAuthMode('login'); setAuthOpen(true); }}
+          onBackToStore={() => navigate('/')}
+        />
+        {authOpen && (
+          <div className="modal-wrap">
+            <button className="modal-backdrop" onClick={() => setAuthOpen(false)} aria-label="Close sign in"></button>
+            <div className="auth-modal">
+              <button className="close-button modal-close" onClick={() => setAuthOpen(false)}>×</button>
+              <div className="auth-brand">k<span>!</span></div>
+              <span className="section-kicker">ADMINISTRATOR SIGN IN</span>
+              <h2>Sign in to Admin Panel</h2>
+              <p>Enter administrator credentials to manage orders and drivers.</p>
+              <form onSubmit={submitAuth}>
+                <input required type="email" placeholder="Admin email address" value={authForm.email} onChange={e => setAuthForm({...authForm, email:e.target.value})}/>
+                <input required minLength="6" type="password" placeholder="Password" value={authForm.password} onChange={e => setAuthForm({...authForm, password:e.target.value})}/>
+                <button className="checkout-button" disabled={loading}>{loading ? 'Signing in…' : 'Sign in as Admin ↗'}</button>
+              </form>
+            </div>
+          </div>
+        )}
+        {toast && <div className="toast"><span>✦</span>{toast}</div>}
+      </>
+    );
+  }
+
+  // ROUTE DISPATCH: Delivery Partner Dashboard
+  if (currentPath === '/delivery' || currentPath.startsWith('/delivery/')) {
+    if (user?.role === 'DELIVERY_PARTNER') {
+      return (
+        <>
+          <DeliveryDashboard
+            user={user}
+            onSignOut={handleSignOut}
+            onNavigateStore={() => navigate('/')}
+            notify={notify}
+          />
+          {toast && <div className="toast"><span>✦</span>{toast}</div>}
+        </>
+      );
+    }
+    return (
+      <>
+        <DeliveryAccessBarrier
+          user={user}
+          onSignIn={() => { setAuthMode('login'); setAuthOpen(true); }}
+          onBackToStore={() => navigate('/')}
+        />
+        {authOpen && (
+          <div className="modal-wrap">
+            <button className="modal-backdrop" onClick={() => setAuthOpen(false)} aria-label="Close sign in"></button>
+            <div className="auth-modal">
+              <button className="close-button modal-close" onClick={() => setAuthOpen(false)}>×</button>
+              <div className="auth-brand">k<span>!</span></div>
+              <span className="section-kicker">DELIVERY PARTNER SIGN IN</span>
+              <h2>Sign in to Driver Portal</h2>
+              <p>Enter your driver credentials to access your assigned orders.</p>
+              <form onSubmit={submitAuth}>
+                <input required type="email" placeholder="Driver email address" value={authForm.email} onChange={e => setAuthForm({...authForm, email:e.target.value})}/>
+                <input required minLength="6" type="password" placeholder="Password" value={authForm.password} onChange={e => setAuthForm({...authForm, password:e.target.value})}/>
+                <button className="checkout-button" disabled={loading}>{loading ? 'Signing in…' : 'Sign in as Driver ↗'}</button>
+              </form>
+            </div>
+          </div>
+        )}
+        {toast && <div className="toast"><span>✦</span>{toast}</div>}
+      </>
+    );
+  }
+
+  // DEFAULT ROUTE: Customer Storefront (Friend's visual design 100% preserved)
   return <div className="app-shell">
     <div className="announcement"><span>✦</span> Your everyday essentials, delivered in minutes <span className="announcement-right">Fresh finds. Happy prices. <b>♡</b></span></div>
     <header className="header">
-      <a className="brand" href="#top" aria-label="KlickIt home"><span className="brand-mark">k<span>!</span></span><span className="brand-word">klick<span>it</span><i>.</i></span></a>
+      <a className="brand" href="#top" onClick={(e) => { e.preventDefault(); navigate('/'); }} aria-label="KlickIt home"><span className="brand-mark">k<span>!</span></span><span className="brand-word">klick<span>it</span><i>.</i></span></a>
       <button className="delivery-location" onClick={() => setAddressOpen(!addressOpen)}><span className="location-pin">⌖</span><span className="location-copy"><b>Delivery in 8–15 minutes</b><small>{address || 'Add delivery address'}</small></span><span className="chevron">⌄</span></button>
       {addressOpen && <div className="address-popover"><b>Where should we deliver?</b><p>Set your delivery address (min 10 characters)</p><input value={address} onChange={e => setAddress(e.target.value)} placeholder="Enter full street address or flat no."/><button onClick={() => { if (!isValidDeliveryAddress(address)) { notify('Address must be at least 10 characters.'); return; } localStorage.setItem('klickit_address', address.trim()); setAddressOpen(false); notify('Delivery location updated'); }}>Save location</button></div>}
       <label className="searchbar"><span className="search-icon">⌕</span><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search for atta, dal, chips, and more..."/><kbd>⌘ K</kbd>{search && <button onClick={() => setSearch('')} aria-label="Clear search">×</button>}</label>
+
+      {/* Role specific portals */}
+      {user?.role === 'ADMIN' && (
+        <button
+          className="account-btn"
+          style={{ background: '#eaf7ec', color: '#0c831f', fontWeight: 600, border: '1px solid #bbf7d0' }}
+          onClick={() => navigate('/admin')}
+          title="Open Administrator Portal"
+        >
+          <span>⚙</span><span>Admin Portal</span>
+        </button>
+      )}
+      {user?.role === 'DELIVERY_PARTNER' && (
+        <button
+          className="account-btn"
+          style={{ background: '#ede9fe', color: '#6d28d9', fontWeight: 600, border: '1px solid #ddd6fe' }}
+          onClick={() => navigate('/delivery')}
+          title="Open Delivery Partner Portal"
+        >
+          <span>🚴</span><span>Driver Portal</span>
+        </button>
+      )}
+
       {user && <button className="account-btn" onClick={() => openAccount('history')} title="View order history"><span className="account-icon">📜</span><span>My Orders</span></button>}
       <button className="account-btn" onClick={() => openAccount('profile')}><span className="account-icon">♙</span><span>{user?.name?.split(' ')[0] || 'Account'}</span></button>
       <button className={`cart-button ${cartCount ? 'has-items' : ''}`} onClick={() => setCartOpen(true)}><span className="cart-icon">🛍</span><span className="cart-label">My Cart</span>{cartCount > 0 && <span className="cart-count">{cartCount}</span>}</button>
@@ -402,7 +624,7 @@ function App() {
         {filtered.length ? <div className="product-grid">{filtered.map(p => <article className="product-card" key={p.id}><div className="product-image-wrap"><span className="product-time"><span>◷</span> {p.time || '10 mins'}</span>{p.mrp > p.price && <span className="discount-tag">{Math.round((p.mrp-p.price)/p.mrp*100)}% OFF</span>}<img src={p.image || seedProducts[0].image} alt={p.name} loading="lazy" onError={e => { e.currentTarget.src = seedProducts[0].image; }}/></div><div className="product-info"><div className="product-category">{p.category || 'DAILY ESSENTIALS'}</div><h3>{p.name}</h3><p>{p.description}</p><div className="product-bottom"><div className="price-stack"><b>{money(p.price)}</b>{p.mrp > p.price && <del>{money(p.mrp)}</del>}</div>{cart[p.id] ? <div className="qty-control"><button onClick={() => changeQty(p.id, -1)} aria-label={`Remove one ${p.name}`}>−</button><b>{cart[p.id]}</b><button onClick={() => changeQty(p.id, 1)} aria-label={`Add one ${p.name}`}>+</button></div> : <button className="add-button" onClick={() => { changeQty(p.id, 1); notify(`${p.name} added to cart`); }}>ADD <span>＋</span></button>}</div></div></article>)}</div> : <div className="empty-search"><span>🧺</span><h3>No matches just yet</h3><p>Try another search or browse all our everyday essentials.</p><button onClick={() => { setSearch(''); setActiveCategory('All'); }}>See all products</button></div>}
       </section>
       <section className="promo-banner"><div className="promo-decoration">✳</div><div><span className="section-kicker">A LITTLE SOMETHING EXTRA</span><h2>Your first basket<br/>looks <em>better on us.</em></h2><p>Good things start with a little treat. Save on your first order.</p></div><div className="promo-code"><span>USE CODE</span><b>KLICKFIRST</b><small>Terms & conditions apply</small></div><div className="promo-sun">☺</div></section>
-      <footer className="footer"><div className="footer-top"><div className="footer-brand"><a className="brand" href="#top"><span className="brand-mark">k<span>!</span></span><span className="brand-word">klick<span>it</span><i>.</i></span></a><p>Everyday things. Extraordinary convenience.</p></div><div className="footer-col"><b>Discover</b><a href="#shop">All products</a><a href="#shop" onClick={() => setActiveCategory('Fruits & Veg')}>Fresh produce</a><a href="#shop" onClick={() => setActiveCategory('Munchies')}>Snacks & munchies</a></div><div className="footer-col"><b>Need a hand?</b><a href="mailto:hello@klickit.example">Contact us</a><a href="#top">FAQs</a><a href="#top">Delivery information</a></div><div className="footer-note"><span>MADE FOR YOUR EVERYDAY ✳</span><p>More living, less running around.</p><div className="social-dots"><i>ig</i><i>in</i><i>♡</i></div></div></div><div className="footer-bottom"><span>© 2026 KlickIt. All little joys reserved.</span><span>Made with a little <b>♥</b> for everyday life.</span></div></footer>
+      <footer className="footer"><div className="footer-top"><div className="footer-brand"><a className="brand" href="#top" onClick={(e) => { e.preventDefault(); navigate('/'); }}><span className="brand-mark">k<span>!</span></span><span className="brand-word">klick<span>it</span><i>.</i></span></a><p>Everyday things. Extraordinary convenience.</p></div><div className="footer-col"><b>Discover</b><a href="#shop">All products</a><a href="#shop" onClick={() => setActiveCategory('Fruits & Veg')}>Fresh produce</a><a href="#shop" onClick={() => setActiveCategory('Munchies')}>Snacks & munchies</a></div><div className="footer-col"><b>Portals</b><a href="#top" onClick={(e) => { e.preventDefault(); navigate('/admin'); }}>Admin Portal</a><a href="#top" onClick={(e) => { e.preventDefault(); navigate('/delivery'); }}>Delivery Portal</a></div><div className="footer-note"><span>MADE FOR YOUR EVERYDAY ✳</span><p>More living, less running around.</p><div className="social-dots"><i>ig</i><i>in</i><i>♡</i></div></div></div><div className="footer-bottom"><span>© 2026 KlickIt. All little joys reserved.</span><span>Made with a little <b>♥</b> for everyday life.</span></div></footer>
     </main>
     {cartOpen && <><button className="overlay" onClick={() => setCartOpen(false)} aria-label="Close cart"></button><aside className="cart-drawer"><div className="drawer-header"><div><span className="section-kicker">YOUR LITTLE HAUL</span><h2>My cart <span>({cartCount})</span></h2></div><button className="close-button" onClick={() => setCartOpen(false)}>×</button></div>{cartCount ? <><div className="delivery-progress"><span>✦</span><div><b>{subtotal >= 199 ? 'You unlocked free delivery!' : `Add ${money(199-subtotal)} more for free delivery`}</b><div className="progress-track"><i style={{ width: `${Math.min(100, subtotal/199*100)}%` }}></i></div></div></div><div className="drawer-items">{cartItems.map(p => <div className="drawer-item" key={p.id}><img src={p.image} alt=""/><div className="drawer-item-info"><b>{p.name}</b><small>{p.description}</small><strong>{money(p.price)}</strong></div><div className="qty-control"><button onClick={() => changeQty(p.id,-1)}>−</button><b>{p.qty}</b><button onClick={() => changeQty(p.id,1)}>+</button></div></div>)}</div><div className="drawer-summary"><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px dashed #e2e4dc', marginBottom: '10px' }}><div style={{ fontSize: '11px', textAlign: 'left', maxWidth: '70%' }}><span style={{ color: '#888a7e', display: 'block', fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Delivery Address</span><b style={{ color: address ? '#1b1d19' : '#dc2626', wordBreak: 'break-word', display: 'block', marginTop: '2px' }}>{address || 'No address set — required'}</b></div><button type="button" onClick={() => setAddressOpen(true)} style={{ background: '#f5f6f2', border: '1px solid #d2d5c8', borderRadius: '6px', padding: '4px 10px', fontSize: '10px', cursor: 'pointer', fontWeight: 600, color: '#245b3b' }}>{address ? 'Change' : '+ Add'}</button></div><div><span>Item total</span><b>{money(subtotal+discount)}</b></div>{discount > 0 && <div className="saving-line"><span>Product savings</span><b>−{money(discount)}</b></div>}<div><span>Delivery fee</span><b>{delivery ? money(delivery) : <span className="free-label">FREE</span>}</b></div><div className="grand-total"><span>To pay</span><b>{money(subtotal+delivery)}</b></div><button className="checkout-button" onClick={checkout} disabled={loading}>{loading ? 'Working on it…' : <>Proceed to checkout <span>{money(subtotal+delivery)} ↗</span></>}</button><small className="secure-note">♡ Secure checkout · Cash on delivery</small></div></> : <div className="empty-cart"><span>🧺</span><h3>Your basket's taking a nap</h3><p>Let's fill it with a few everyday favourites.</p><button onClick={() => setCartOpen(false)}>Start shopping ↗</button></div>}</aside></>}
     {authOpen && <div className="modal-wrap"><button className="modal-backdrop" onClick={() => setAuthOpen(false)} aria-label="Close sign in"></button><div className="auth-modal"><button className="close-button modal-close" onClick={() => setAuthOpen(false)}>×</button><div className="auth-brand">k<span>!</span></div><span className="section-kicker">YOUR EVERYDAY, MADE EASIER</span><h2>{authMode === 'login' ? 'Welcome back!' : 'Come on in!'}</h2><p>{authMode === 'login' ? 'Sign in to pick up right where you left off.' : 'Create an account for a little more convenience.'}</p><form onSubmit={submitAuth}>{authMode === 'register' && <input required placeholder="Your name" value={authForm.name} onChange={e => setAuthForm({...authForm, name:e.target.value})}/>}<input required type="email" placeholder="Email address" value={authForm.email} onChange={e => setAuthForm({...authForm, email:e.target.value})}/>{authMode === 'register' && <input required placeholder="Phone number (required)" value={authForm.phone} onChange={e => setAuthForm({...authForm, phone:e.target.value})}/>}<input required minLength="6" type="password" placeholder="Password (at least 6 characters)" value={authForm.password} onChange={e => setAuthForm({...authForm, password:e.target.value})}/><button className="checkout-button" disabled={loading}>{loading ? 'One moment…' : authMode === 'login' ? 'Sign in ↗' : 'Create my account ↗'}</button></form><div className="auth-switch">{authMode === 'login' ? "New around here?" : 'Already have an account?'} <button onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')}>{authMode === 'login' ? 'Create account' : 'Sign in'}</button></div><small className="auth-legal">By continuing, you agree to our Terms of Service and Privacy Policy.</small></div></div>}
@@ -430,11 +652,11 @@ function App() {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '10px 0' }}>
             <span style={{ fontSize: '11px', color: '#77796f' }}>Current Status:</span>
             <span className={`status-pill ${String(currentStatus || '').toLowerCase()}`}>
-              {isCancelled ? '✕ CANCELLED' : currentStatus}
+              {isCancelled ? '✕ CANCELLED' : isRejected ? '✕ REJECTED' : currentStatus}
             </span>
           </div>
 
-          {/* Stepper or Cancelled Banner */}
+          {/* Stepper, Cancelled Banner, or Rejected Banner */}
           {isCancelled ? (
             <div className="cancelled-banner">
               <span style={{ fontSize: '20px' }}>✕</span>
@@ -443,17 +665,25 @@ function App() {
                 <p>This order has been cancelled and will not progress to delivery.</p>
               </div>
             </div>
+          ) : isRejected ? (
+            <div className="cancelled-banner" style={{ background: '#fef2f2', borderColor: '#fca5a5' }}>
+              <span style={{ fontSize: '20px', color: '#dc2626' }}>✕</span>
+              <div>
+                <b style={{ color: '#991b1b' }}>Order Rejected</b>
+                <p style={{ color: '#b91c1c' }}>This order was rejected by the store administrator.</p>
+              </div>
+            </div>
           ) : (
             <div className="status-stepper">
               <span className="section-kicker" style={{ fontSize: '8px' }}>DELIVERY PROGRESSION</span>
               <div className="stepper-steps">
                 {lifecycleStages.map((stage, idx) => {
-                  const isCompleted = currentStageIndex > idx;
-                  const isActive = currentStageIndex === idx;
+                  const done = currentStageIndex >= idx;
+                  const active = currentStageIndex === idx;
                   return (
-                    <div key={stage} className={`stepper-step ${isCompleted ? 'completed' : ''} ${isActive ? 'active' : ''}`}>
-                      <div className="step-dot">{isCompleted ? '✓' : idx + 1}</div>
-                      <span>{stageLabels[stage]}</span>
+                    <div key={stage} className={`step-item ${done ? 'done' : ''} ${active ? 'active' : ''}`}>
+                      <div className="step-circle">{done ? '✓' : idx + 1}</div>
+                      <span className="step-label">{stageLabels[stage] || stage}</span>
                     </div>
                   );
                 })}
@@ -461,19 +691,15 @@ function App() {
             </div>
           )}
 
-          {/* Key order details */}
+          {/* Order info details */}
           <div className="tracking-info-grid">
             <div className="info-card">
-              <small>Total Amount</small>
-              <b style={{ fontSize: '15px', color: '#245b3b' }}>{money(activeOrder.totalAmount)}</b>
+              <small>Total Amount (COD)</small>
+              <p><b>{money(activeOrder.totalAmount)}</b></p>
             </div>
             <div className="info-card">
-              <small>Expected Deadline</small>
-              <b>
-                {activeOrder.deadline
-                  ? new Date(activeOrder.deadline).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                  : '15 mins SLA'}
-              </b>
+              <small>Delivery SLA</small>
+              <p><b>{activeOrder.deadline ? new Date(activeOrder.deadline).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '15 mins'}</b></p>
             </div>
             <div className="info-card" style={{ gridColumn: 'span 2' }}>
               <small>Delivery Address</small>
@@ -518,7 +744,7 @@ function App() {
       <div className="account-modal">
         <div className="tracking-header">
           <div>
-            <span className="section-kicker">CUSTOMER ACCOUNT</span>
+            <span className="section-kicker">ACCOUNT & PREFERENCES</span>
             <h2>{user?.name || 'My Account'}</h2>
             <small style={{ color: '#888a7e', fontSize: '10px' }}>{user?.email}</small>
           </div>
@@ -536,12 +762,18 @@ function App() {
 
         {accountTab === 'profile' && <div className="profile-card">
           <div className="profile-row">
-            <span>Customer Name</span>
+            <span>Name</span>
             <b>{user?.name || 'Not set'}</b>
           </div>
           <div className="profile-row">
             <span>Email Address</span>
             <b>{user?.email || 'Not set'}</b>
+          </div>
+          <div className="profile-row">
+            <span>Account Role</span>
+            <b style={{ color: user?.role === 'ADMIN' ? '#0c831f' : user?.role === 'DELIVERY_PARTNER' ? '#7c3aed' : '#2563eb' }}>
+              {user?.role || 'CUSTOMER'}
+            </b>
           </div>
           <div className="profile-row">
             <span>Phone Number</span>
@@ -595,7 +827,30 @@ function App() {
             <span>Saved Area</span>
             <b>{address || 'Not set'}</b>
           </div>
-          <button className="btn-signout" onClick={handleSignOut}>Sign Out</button>
+
+          {/* Quick jump to authorized dashboard */}
+          {user?.role === 'ADMIN' && (
+            <button
+              type="button"
+              className="checkout-button"
+              style={{ marginTop: '12px', background: '#0c831f' }}
+              onClick={() => { setAccountOpen(false); navigate('/admin'); }}
+            >
+              Open Administrator Dashboard ⚙ ↗
+            </button>
+          )}
+          {user?.role === 'DELIVERY_PARTNER' && (
+            <button
+              type="button"
+              className="checkout-button"
+              style={{ marginTop: '12px', background: '#7c3aed' }}
+              onClick={() => { setAccountOpen(false); navigate('/delivery'); }}
+            >
+              Open Delivery Partner Dashboard 🚴 ↗
+            </button>
+          )}
+
+          <button className="btn-signout" style={{ marginTop: '16px' }} onClick={handleSignOut}>Sign Out</button>
         </div>}
 
         {accountTab === 'history' && <div>
@@ -617,34 +872,16 @@ function App() {
 
           {!historyLoading && !historyError && orderHistory.length > 0 && (
             <div className="order-history-list">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <span className="section-kicker" style={{ fontSize: '8px' }}>PAST ORDERS ({orderHistory.length})</span>
-                <button className="btn-refresh" onClick={fetchOrderHistory} style={{ height: '28px', fontSize: '9px', padding: '0 8px', flex: 'none' }}><span>↻</span> Refresh</button>
-              </div>
               {orderHistory.map(order => {
-                const orderStatus = order?.status;
-                const isCancelledOrder = orderStatus === 'CANCELLED';
-                const dateStr = order?.createdAt ? new Date(order.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
-                const itemsCount = Array.isArray(order?.items) ? order.items.reduce((sum, it) => sum + (it.quantity || 1), 0) : 0;
-                const itemsSummary = Array.isArray(order?.items) && order.items.length > 0
-                  ? order.items.map(it => `${it.productName}${it.quantity > 1 ? ` (×${it.quantity})` : ''}`).join(', ')
-                  : '';
+                const dateStr = order.createdAt ? new Date(order.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+                const itemsCount = Array.isArray(order.items) ? order.items.reduce((sum, it) => sum + (it.quantity || 1), 0) : 0;
+                const itemsSummary = Array.isArray(order.items) ? order.items.map(it => it.productName).filter(Boolean).join(', ') : '';
 
                 return (
-                  <button
-                    key={order.id}
-                    className="order-card"
-                    onClick={() => {
-                      setAccountOpen(false);
-                      openTracking(order);
-                      fetchOrder(order.id); // authoritatively refresh current state
-                    }}
-                  >
+                  <button key={order.id} className="order-card-summary" onClick={() => { setAccountOpen(false); openTracking(order); }}>
                     <div className="order-card-header">
-                      <b>Order #{String(order.id).substring(0, 8)}</b>
-                      <span className={`status-pill ${String(orderStatus || '').toLowerCase()}`}>
-                        {isCancelledOrder ? '✕ CANCELLED' : orderStatus}
-                      </span>
+                      <span className="order-card-id">#{String(order.id).substring(0, 8)}</span>
+                      <span className={`status-pill ${String(order.status || '').toLowerCase()}`}>{order.status}</span>
                     </div>
                     <div className="order-card-meta">
                       <span>{dateStr || 'Recent'}</span>
@@ -667,7 +904,14 @@ function App() {
     </div>}
 
     {toast && <div className="toast"><span>✦</span>{toast}</div>}
-    <nav className="mobile-nav"><button onClick={() => {setActiveCategory('All');window.scrollTo({top:0,behavior:'smooth'});}}><span>⌂</span>Home</button><button onClick={() => document.getElementById('shop')?.scrollIntoView({behavior:'smooth'})}><span>⌕</span>Explore</button><button onClick={() => setCartOpen(true)}><span>🛍</span>Cart {cartCount ? `(${cartCount})` : ''}</button><button onClick={() => openAccount('profile')}><span>♙</span>Account</button></nav>
+    <nav className="mobile-nav">
+      <button onClick={() => { navigate('/'); setActiveCategory('All'); window.scrollTo({top:0,behavior:'smooth'}); }}><span>⌂</span>Home</button>
+      <button onClick={() => { navigate('/'); document.getElementById('shop')?.scrollIntoView({behavior:'smooth'}); }}><span>⌕</span>Explore</button>
+      <button onClick={() => setCartOpen(true)}><span>🛍</span>Cart {cartCount ? `(${cartCount})` : ''}</button>
+      {user?.role === 'ADMIN' && <button onClick={() => navigate('/admin')}><span>⚙</span>Admin</button>}
+      {user?.role === 'DELIVERY_PARTNER' && <button onClick={() => navigate('/delivery')}><span>🚴</span>Driver</button>}
+      <button onClick={() => openAccount('profile')}><span>♙</span>Account</button>
+    </nav>
   </div>;
 }
 
