@@ -205,10 +205,22 @@ public class OrderService {
     @Transactional
     public OrderResponse cancelOrder(UUID id) {
         Order order = findOrderOrThrow(id);
-        validateOrderAccess(order);
-        if (order.getStatus() == OrderStatus.DELIVERED) {
+        validateOrderCancellationAccess(order);
+
+        OrderStatus currentStatus = order.getStatus();
+        if (currentStatus == OrderStatus.CANCELLED) {
+            throw new IllegalStateException("Cannot cancel an already cancelled order");
+        }
+        if (currentStatus == OrderStatus.DELIVERED) {
             throw new IllegalStateException("Cannot cancel a delivered order");
         }
+
+        Set<OrderStatus> allowed = ALLOWED_TRANSITIONS.getOrDefault(currentStatus, Set.of());
+        if (!allowed.contains(OrderStatus.CANCELLED)) {
+            throw new IllegalStateException(
+                    String.format("Cannot transition order from %s to %s", currentStatus, OrderStatus.CANCELLED));
+        }
+
         order.setStatus(OrderStatus.CANCELLED);
         Order updated = orderRepository.save(order);
         return OrderResponse.from(updated);
@@ -263,6 +275,31 @@ public class OrderService {
                 return; // Assigned delivery partner has access
             }
             throw new AccessDeniedException("You are not authorized to access this order");
+        }
+
+        // Customer access: order must belong to authenticated customer
+        String currentUserEmail = auth.getName();
+        if (order.getCustomerEmail() == null || !order.getCustomerEmail().equalsIgnoreCase(currentUserEmail)) {
+            throw new AccessDeniedException("You are not authorized to access this order");
+        }
+    }
+
+    private void validateOrderCancellationAccess(Order order) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
+            throw new AccessDeniedException("Authentication required to access this order");
+        }
+
+        boolean isAdmin = auth.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+        if (isAdmin) {
+            return; // Admin has universal order cancellation access
+        }
+
+        boolean isDeliveryPartner = auth.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_DELIVERY_PARTNER"));
+        if (isDeliveryPartner) {
+            throw new AccessDeniedException("Delivery partners are not authorized to cancel orders");
         }
 
         // Customer access: order must belong to authenticated customer

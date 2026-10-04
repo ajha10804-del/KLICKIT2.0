@@ -246,7 +246,106 @@ class OrderAuthorizationSecurityTest {
                 .andExpect(jsonPath("$.data.customerEmail").value("customerA@klickit.com"));
     }
 
+    @Test
+    @DisplayName("Anonymous user calling cancel returns 401 Unauthorized")
+    void anonymousUser_cancelOrder_returns401() throws Exception {
+        UUID orderId = UUID.randomUUID();
+        mockMvc.perform(post("/orders/" + orderId + "/cancel"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false));
+    }
+
+    @Test
+    @WithMockUser(username = "customerA@klickit.com", roles = {"CUSTOMER"})
+    @DisplayName("Customer cancelling their own order returns 200 OK")
+    void customer_cancelOwnOrder_returns200() throws Exception {
+        UUID orderId = UUID.randomUUID();
+        OrderResponse cancelledOrder = createSampleOrder(orderId, "customerA@klickit.com", OrderStatus.CANCELLED);
+        when(orderService.cancelOrder(orderId)).thenReturn(cancelledOrder);
+
+        mockMvc.perform(post("/orders/" + orderId + "/cancel"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").value("Order cancelled"))
+                .andExpect(jsonPath("$.data.status").value("CANCELLED"));
+    }
+
+    @Test
+    @WithMockUser(username = "customerB@klickit.com", roles = {"CUSTOMER"})
+    @DisplayName("Customer attempting to cancel another customer's order returns 403 Forbidden")
+    void customerB_cancelCustomerAOrder_returns403() throws Exception {
+        UUID orderId = UUID.randomUUID();
+        when(orderService.cancelOrder(orderId))
+                .thenThrow(new AccessDeniedException("You are not authorized to access this order"));
+
+        mockMvc.perform(post("/orders/" + orderId + "/cancel"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message").value("Access denied"));
+    }
+
+    @Test
+    @WithMockUser(username = "driver@klickit.com", roles = {"DELIVERY_PARTNER"})
+    @DisplayName("Delivery partner attempting to cancel an order returns 403 Forbidden")
+    void deliveryPartner_cancelOrder_returns403() throws Exception {
+        UUID orderId = UUID.randomUUID();
+        when(orderService.cancelOrder(orderId))
+                .thenThrow(new AccessDeniedException("Delivery partners are not authorized to cancel orders"));
+
+        mockMvc.perform(post("/orders/" + orderId + "/cancel"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message").value("Access denied"));
+    }
+
+    @Test
+    @WithMockUser(username = "customerA@klickit.com", roles = {"CUSTOMER"})
+    @DisplayName("Customer attempting to cancel already-cancelled order returns 400 Bad Request")
+    void customer_cancelAlreadyCancelledOrder_returns400() throws Exception {
+        UUID orderId = UUID.randomUUID();
+        when(orderService.cancelOrder(orderId))
+                .thenThrow(new IllegalStateException("Cannot cancel an already cancelled order"));
+
+        mockMvc.perform(post("/orders/" + orderId + "/cancel"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message").value("Cannot cancel an already cancelled order"));
+    }
+
+    @Test
+    @WithMockUser(username = "customerA@klickit.com", roles = {"CUSTOMER"})
+    @DisplayName("Customer attempting to cancel delivered order returns 400 Bad Request")
+    void customer_cancelDeliveredOrder_returns400() throws Exception {
+        UUID orderId = UUID.randomUUID();
+        when(orderService.cancelOrder(orderId))
+                .thenThrow(new IllegalStateException("Cannot cancel a delivered order"));
+
+        mockMvc.perform(post("/orders/" + orderId + "/cancel"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message").value("Cannot cancel a delivered order"));
+    }
+
+    @Test
+    @WithMockUser(username = "admin@klickit.com", roles = {"ADMIN"})
+    @DisplayName("Admin cancelling an order returns 200 OK")
+    void admin_cancelOrder_returns200() throws Exception {
+        UUID orderId = UUID.randomUUID();
+        OrderResponse cancelledOrder = createSampleOrder(orderId, "customerA@klickit.com", OrderStatus.CANCELLED);
+        when(orderService.cancelOrder(orderId)).thenReturn(cancelledOrder);
+
+        mockMvc.perform(post("/orders/" + orderId + "/cancel"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").value("Order cancelled"))
+                .andExpect(jsonPath("$.data.status").value("CANCELLED"));
+    }
+
     private OrderResponse createSampleOrder(UUID id, String customerEmail) {
+        return createSampleOrder(id, customerEmail, OrderStatus.PLACED);
+    }
+
+    private OrderResponse createSampleOrder(UUID id, String customerEmail, OrderStatus status) {
         return OrderResponse.builder()
                 .id(id)
                 .customerName("Sample Customer")
@@ -255,7 +354,7 @@ class OrderAuthorizationSecurityTest {
                 .customerEmail(customerEmail)
                 .deadline(Instant.now().plusSeconds(1800))
                 .totalAmount(new BigDecimal("150.00"))
-                .status(OrderStatus.PLACED)
+                .status(status)
                 .items(List.of())
                 .createdAt(Instant.now())
                 .build();
