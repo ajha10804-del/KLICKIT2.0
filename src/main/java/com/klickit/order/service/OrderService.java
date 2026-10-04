@@ -39,7 +39,8 @@ import java.util.UUID;
 public class OrderService {
 
     private static final Map<OrderStatus, Set<OrderStatus>> ALLOWED_TRANSITIONS = Map.of(
-            OrderStatus.PLACED, Set.of(OrderStatus.ASSIGNED, OrderStatus.REJECTED, OrderStatus.CANCELLED),
+            OrderStatus.PLACED, Set.of(OrderStatus.READY_TO_ASSIGN, OrderStatus.REJECTED, OrderStatus.CANCELLED),
+            OrderStatus.READY_TO_ASSIGN, Set.of(OrderStatus.ASSIGNED, OrderStatus.CANCELLED),
             OrderStatus.ASSIGNED, Set.of(OrderStatus.OUT_FOR_DELIVERY, OrderStatus.CANCELLED),
             OrderStatus.OUT_FOR_DELIVERY, Set.of(OrderStatus.DELIVERED, OrderStatus.CANCELLED),
             OrderStatus.REJECTED, Set.of(),
@@ -208,6 +209,21 @@ public class OrderService {
     }
 
     @Transactional
+    public OrderResponse approveOrder(UUID id) {
+        validateAdminAccess();
+        Order order = findOrderOrThrow(id);
+
+        if (order.getStatus() != OrderStatus.PLACED) {
+            throw new IllegalStateException(
+                    String.format("Cannot transition order from %s to %s", order.getStatus(), OrderStatus.READY_TO_ASSIGN));
+        }
+
+        order.setStatus(OrderStatus.READY_TO_ASSIGN);
+        Order updated = orderRepository.save(order);
+        return OrderResponse.from(updated);
+    }
+
+    @Transactional
     public OrderResponse rejectOrder(UUID id) {
         validateAdminAccess();
         Order order = findOrderOrThrow(id);
@@ -263,7 +279,10 @@ public class OrderService {
         if (order.getStatus() == OrderStatus.REJECTED) {
             throw new IllegalStateException("Cannot assign delivery to a rejected order");
         }
-        if (order.getStatus() != OrderStatus.PLACED) {
+        if (order.getStatus() == OrderStatus.PLACED) {
+            throw new IllegalStateException("Cannot assign delivery to an order in PLACED state; order must be approved first");
+        }
+        if (order.getStatus() != OrderStatus.READY_TO_ASSIGN) {
             throw new IllegalStateException(
                     String.format("Cannot transition order from %s to ASSIGNED", order.getStatus()));
         }

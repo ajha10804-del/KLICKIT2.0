@@ -265,8 +265,12 @@ class AdminOrderLifecycleIntegrationTest {
         assertThat(allAdminOrders).anyMatch(o -> o.getId().equals(orderId));
 
         // ---------------------------------------------------------------------
-        // STEP 4: Admin assigns Delivery Partner A
+        // STEP 4: Admin approves order and assigns Delivery Partner A
         // ---------------------------------------------------------------------
+        OrderResponse approvedOrder = orderService.approveOrder(orderId);
+        assertThat(approvedOrder).isNotNull();
+        assertThat(approvedOrder.getStatus()).isEqualTo(OrderStatus.READY_TO_ASSIGN);
+
         AssignDeliveryRequest assignRequest = new AssignDeliveryRequest(partnerA.getId());
         OrderResponse assignedOrder = orderService.assignDeliveryPartner(orderId, assignRequest);
 
@@ -438,7 +442,7 @@ class AdminOrderLifecycleIntegrationTest {
                 .customerPhone("1234567890")
                 .customerAddress("Campus")
                 .totalAmount(BigDecimal.TEN)
-                .status(OrderStatus.PLACED)
+                .status(OrderStatus.READY_TO_ASSIGN)
                 .items(new ArrayList<>())
                 .build();
         order.setId(orderId);
@@ -480,7 +484,7 @@ class AdminOrderLifecycleIntegrationTest {
     // =========================================================================
 
     @Test
-    @DisplayName("Valid transitions succeed and persist new status: PLACED -> ASSIGNED -> OUT_FOR_DELIVERY -> DELIVERED")
+    @DisplayName("Valid transitions succeed and persist new status: PLACED -> READY_TO_ASSIGN -> ASSIGNED -> OUT_FOR_DELIVERY -> DELIVERED")
     void validTransitions_succeedAndPersist() {
         authenticate("admin@klickit.com", "ADMIN");
 
@@ -496,19 +500,24 @@ class AdminOrderLifecycleIntegrationTest {
         order.setId(orderId);
         orderDb.put(orderId, order);
 
-        // 1. PLACED -> ASSIGNED (via assignDeliveryPartner)
+        // 1. PLACED -> READY_TO_ASSIGN (via approveOrder)
+        OrderResponse approved = orderService.approveOrder(orderId);
+        assertThat(approved.getStatus()).isEqualTo(OrderStatus.READY_TO_ASSIGN);
+        assertThat(orderDb.get(orderId).getStatus()).isEqualTo(OrderStatus.READY_TO_ASSIGN);
+
+        // 2. READY_TO_ASSIGN -> ASSIGNED (via assignDeliveryPartner)
         AssignDeliveryRequest assignReq = new AssignDeliveryRequest(partnerA.getId());
         OrderResponse assigned = orderService.assignDeliveryPartner(orderId, assignReq);
         assertThat(assigned.getStatus()).isEqualTo(OrderStatus.ASSIGNED);
         assertThat(orderDb.get(orderId).getStatus()).isEqualTo(OrderStatus.ASSIGNED);
         assertThat(orderDb.get(orderId).getDeliveryPartnerId()).isEqualTo(partnerA.getId());
 
-        // 2. ASSIGNED -> OUT_FOR_DELIVERY (via updateStatus)
+        // 3. ASSIGNED -> OUT_FOR_DELIVERY (via updateStatus)
         OrderResponse outForDelivery = orderService.updateStatus(orderId, new UpdateOrderStatusRequest(OrderStatus.OUT_FOR_DELIVERY));
         assertThat(outForDelivery.getStatus()).isEqualTo(OrderStatus.OUT_FOR_DELIVERY);
         assertThat(orderDb.get(orderId).getStatus()).isEqualTo(OrderStatus.OUT_FOR_DELIVERY);
 
-        // 3. OUT_FOR_DELIVERY -> DELIVERED (via updateStatus)
+        // 4. OUT_FOR_DELIVERY -> DELIVERED (via updateStatus)
         OrderResponse delivered = orderService.updateStatus(orderId, new UpdateOrderStatusRequest(OrderStatus.DELIVERED));
         assertThat(delivered.getStatus()).isEqualTo(OrderStatus.DELIVERED);
         assertThat(orderDb.get(orderId).getStatus()).isEqualTo(OrderStatus.DELIVERED);

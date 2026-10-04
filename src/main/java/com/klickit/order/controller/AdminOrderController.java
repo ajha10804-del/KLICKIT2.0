@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -48,8 +49,15 @@ public class AdminOrderController {
         return ResponseEntity.ok(ApiResponse.success(order));
     }
 
-    @Operation(summary = "Assign delivery partner and approve order", description = "Admin-only endpoint to assign an order to a delivery partner and approve it")
-    @PatchMapping({"/{id}/assign", "/{id}/approve"})
+    @Operation(summary = "Approve order", description = "Admin-only endpoint to approve a placed order into READY_TO_ASSIGN state")
+    @RequestMapping(value = "/{id}/approve", method = {RequestMethod.POST, RequestMethod.PATCH})
+    public ResponseEntity<ApiResponse<OrderResponse>> approveOrder(@PathVariable UUID id) {
+        OrderResponse order = orderService.approveOrder(id);
+        return ResponseEntity.ok(ApiResponse.success("Order approved", order));
+    }
+
+    @Operation(summary = "Assign delivery partner", description = "Admin-only endpoint to assign an order to a delivery partner")
+    @PatchMapping("/{id}/assign")
     public ResponseEntity<ApiResponse<OrderResponse>> assignDeliveryPartner(
             @PathVariable UUID id,
             @Valid @RequestBody AssignDeliveryRequest request) {
