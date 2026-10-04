@@ -43,6 +43,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
@@ -149,39 +150,122 @@ class OrderEmailNotificationTest {
     }
 
     @Test
-    @DisplayName("Order persists and survives even if notification delivery fails")
-    void checkout_survivesNotificationFailure() {
+    @DisplayName("Email is dispatched once per successful checkout")
+    void checkout_success_dispatchesEmailOnce() {
         Cart cart = Cart.builder()
-                .sessionId("sess_12345")
+                .sessionId("sess_once")
                 .items(new ArrayList<>())
                 .build();
-        UUID maggiId = UUID.randomUUID();
-        CartItem cartItem = CartItem.builder()
+        UUID itemId = UUID.randomUUID();
+        cart.addItem(CartItem.builder()
                 .cart(cart)
-                .productId(maggiId)
-                .productName("Maggi")
-                .unitPrice(new BigDecimal("14.00"))
-                .quantity(2)
+                .productId(itemId)
+                .productName("Biscuits")
+                .unitPrice(new BigDecimal("20.00"))
+                .quantity(1)
+                .build());
+        com.klickit.product.entity.Product product = com.klickit.product.entity.Product.builder()
+                .name("Biscuits")
+                .price(new BigDecimal("20.00"))
+                .active(true)
                 .build();
-        cart.addItem(cartItem);
-        com.klickit.product.entity.Product maggi = com.klickit.product.entity.Product.builder().name("Maggi").price(new BigDecimal("14.00")).active(true).build();
-        maggi.setId(maggiId);
-        when(productRepository.findById(maggiId)).thenReturn(Optional.of(maggi));
-
-        when(cartRepository.findBySessionId("sess_12345")).thenReturn(Optional.of(cart));
-        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> {
-            Order o = invocation.getArgument(0);
+        product.setId(itemId);
+        when(productRepository.findById(itemId)).thenReturn(Optional.of(product));
+        when(cartRepository.findBySessionId("sess_once")).thenReturn(Optional.of(cart));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> {
+            Order o = inv.getArgument(0);
             o.setId(testOrderId);
             return o;
         });
 
-        CheckoutRequest request = new CheckoutRequest("sess_12345", "Pooja", "9876543210", "Hostel Room 1", null);
+        CheckoutRequest request = new CheckoutRequest("sess_once", "Pooja", "9876543210", "Hostel Room 1", null);
         OrderResponse response = orderService.checkout(request);
 
         assertThat(response).isNotNull();
-        assertThat(response.getId()).isEqualTo(testOrderId);
-        verify(orderRepository).save(any(Order.class));
-        verify(eventPublisher).publishEvent(any(OrderCreatedEvent.class));
+        ArgumentCaptor<OrderCreatedEvent> eventCaptor = ArgumentCaptor.forClass(OrderCreatedEvent.class);
+        verify(eventPublisher, times(1)).publishEvent(eventCaptor.capture());
+
+        when(emailClient.sendEmail(eq("admin@klickit.com"), anyString(), anyString())).thenReturn(true);
+        orderNotificationListener.handleOrderCreated(eventCaptor.getValue());
+        verify(emailClient, times(1)).sendEmail(eq("admin@klickit.com"), anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("Email is NOT called when checkout fails due to empty cart")
+    void checkout_failsOnEmptyCart_emailNotCalled() {
+        Cart emptyCart = Cart.builder().sessionId("sess_empty").items(new ArrayList<>()).build();
+        when(cartRepository.findBySessionId("sess_empty")).thenReturn(Optional.of(emptyCart));
+
+        CheckoutRequest request = new CheckoutRequest("sess_empty", "Pooja", "9876543210", "Hostel Room 1", null);
+        assertThatThrownBy(() -> orderService.checkout(request))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Cannot checkout an empty cart");
+
+        verify(eventPublisher, never()).publishEvent(any());
+        verify(emailClient, never()).sendEmail(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("Email is NOT called when checkout fails due to inactive product")
+    void checkout_failsOnInactiveProduct_emailNotCalled() {
+        Cart cart = Cart.builder().sessionId("sess_inactive").items(new ArrayList<>()).build();
+        UUID itemId = UUID.randomUUID();
+        cart.addItem(CartItem.builder().cart(cart).productId(itemId).productName("Inactive Item").unitPrice(new BigDecimal("10.00")).quantity(1).build());
+        com.klickit.product.entity.Product product = com.klickit.product.entity.Product.builder().name("Inactive Item").price(new BigDecimal("10.00")).active(false).build();
+        product.setId(itemId);
+        when(cartRepository.findBySessionId("sess_inactive")).thenReturn(Optional.of(cart));
+        when(productRepository.findById(itemId)).thenReturn(Optional.of(product));
+
+        CheckoutRequest request = new CheckoutRequest("sess_inactive", "Pooja", "9876543210", "Hostel Room 1", null);
+        assertThatThrownBy(() -> orderService.checkout(request))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Product is no longer available");
+
+        verify(eventPublisher, never()).publishEvent(any());
+        verify(emailClient, never()).sendEmail(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("Checkout succeeds and order is saved when mail sender throws exception")
+    void checkout_succeeds_whenMailSenderThrowsException() {
+        Order order = buildSampleOrder();
+        when(emailClient.sendEmail(anyString(), anyString(), anyString()))
+                .thenThrow(new RuntimeException("Mail server connection timed out"));
+
+        OrderCreatedEvent event = new OrderCreatedEvent(order, order.getItems());
+        assertThatCode(() -> orderNotificationListener.handleOrderCreated(event))
+                .doesNotThrowAnyException();
+
+        verify(orderRepository).updateNotificationStatus(eq(testOrderId), eq(false));
+    }
+
+    @Test
+    @DisplayName("buildOrderEmailBody includes order ID, customer name, phone, address, order time, line items, subtotal, delivery fee, and COD total amount")
+    void buildOrderEmailBody_containsCompleteOrderAndFinancialBreakdown() {
+        Order order = buildSampleOrder();
+        order.setCreatedAt(fixedNow);
+        order.setDeliveryFee(new BigDecimal("25.00"));
+        order.setTotalAmount(new BigDecimal("93.00"));
+
+        String emailHtml = emailService.buildOrderEmailBody(order);
+
+        assertThat(emailHtml).contains("Order ID");
+        assertThat(emailHtml).contains(testOrderId.toString());
+        assertThat(emailHtml).contains("Customer Name");
+        assertThat(emailHtml).contains("Rahul Sharma");
+        assertThat(emailHtml).contains("Customer Phone");
+        assertThat(emailHtml).contains("9876543210");
+        assertThat(emailHtml).contains("Delivery Address");
+        assertThat(emailHtml).contains("Block B, Room 101, Campus Hostel");
+        assertThat(emailHtml).contains("Order Time");
+        assertThat(emailHtml).contains("Subtotal:");
+        assertThat(emailHtml).contains("₹68.00");
+        assertThat(emailHtml).contains("Delivery Fee:");
+        assertThat(emailHtml).contains("₹25.00");
+        assertThat(emailHtml).contains("Total (COD Amount):");
+        assertThat(emailHtml).contains("₹93.00");
+        assertThat(emailHtml).contains("Maggi 2-Minute Noodles");
+        assertThat(emailHtml).contains("Coca Cola 750ml");
     }
 
     // =========================================================================

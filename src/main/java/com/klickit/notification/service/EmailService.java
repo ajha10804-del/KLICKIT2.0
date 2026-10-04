@@ -92,6 +92,9 @@ public class EmailService {
         appendRow(sb, "Customer Name", HtmlUtils.htmlEscape(order.getCustomerName() != null ? order.getCustomerName() : "N/A"));
         appendRow(sb, "Customer Phone", HtmlUtils.htmlEscape(order.getCustomerPhone() != null ? order.getCustomerPhone() : "N/A"));
         appendRow(sb, "Delivery Address", HtmlUtils.htmlEscape(order.getCustomerAddress() != null ? order.getCustomerAddress() : "N/A"));
+        appendRow(sb, "Order Time", order.getCreatedAt() != null
+                ? dateFormatter.format(order.getCreatedAt())
+                : (order.getDeadline() != null ? dateFormatter.format(order.getDeadline().minus(15, java.time.temporal.ChronoUnit.MINUTES)) : "Standard Delivery (ASAP)"));
         appendRow(sb, "Deadline", order.getDeadline() != null
                 ? dateFormatter.format(order.getDeadline())
                 : "Standard Delivery (ASAP)");
@@ -121,10 +124,10 @@ public class EmailService {
                         .append(qty)
                         .append("</td>");
                 sb.append("<td style='padding: 10px; text-align: right; border: 1px solid #ddd;'>₹")
-                        .append(price)
+                        .append(price.setScale(2, java.math.RoundingMode.HALF_UP))
                         .append("</td>");
                 sb.append("<td style='padding: 10px; text-align: right; border: 1px solid #ddd;'>₹")
-                        .append(lineTotal)
+                        .append(lineTotal.setScale(2, java.math.RoundingMode.HALF_UP))
                         .append("</td>");
                 sb.append("</tr>");
             }
@@ -132,13 +135,32 @@ public class EmailService {
 
         sb.append("</table>");
 
-        // Total
+        // Authoritative COD Financial Breakdown: Subtotal, Delivery Fee, Total Amount
         BigDecimal total = order.getTotalAmount() != null ? order.getTotalAmount() : BigDecimal.ZERO;
-        sb.append("<h3 style='color: #2c3e50; text-align: right; margin-top: 16px;'>");
-        sb.append("Total: ₹").append(total);
-        sb.append("</h3>");
+        BigDecimal fee = order.getDeliveryFee() != null ? order.getDeliveryFee() : BigDecimal.ZERO;
+        BigDecimal subtotal = total.subtract(fee);
+        if (subtotal.compareTo(BigDecimal.ZERO) < 0) {
+            subtotal = BigDecimal.ZERO;
+        }
 
-        sb.append("<hr style='border: 1px solid #eee;'>");
+        sb.append("<table style='width: 100%; border-collapse: collapse; margin-top: 16px;'>");
+        sb.append("<tr>");
+        sb.append("<td style='padding: 6px; text-align: right; font-weight: bold;'>Subtotal:</td>");
+        sb.append("<td style='padding: 6px; text-align: right; width: 140px;'>₹").append(subtotal.setScale(2, java.math.RoundingMode.HALF_UP)).append("</td>");
+        sb.append("</tr>");
+        sb.append("<tr>");
+        sb.append("<td style='padding: 6px; text-align: right; font-weight: bold;'>Delivery Fee:</td>");
+        sb.append("<td style='padding: 6px; text-align: right; width: 140px;'>")
+          .append(fee.compareTo(BigDecimal.ZERO) == 0 ? "FREE" : "₹" + fee.setScale(2, java.math.RoundingMode.HALF_UP))
+          .append("</td>");
+        sb.append("</tr>");
+        sb.append("<tr style='border-top: 2px solid #2c3e50;'>");
+        sb.append("<td style='padding: 8px; text-align: right; font-weight: bold; font-size: 16px;'>Total (COD Amount):</td>");
+        sb.append("<td style='padding: 8px; text-align: right; font-weight: bold; font-size: 16px; color: #16a34a; width: 140px;'>₹").append(total.setScale(2, java.math.RoundingMode.HALF_UP)).append("</td>");
+        sb.append("</tr>");
+        sb.append("</table>");
+
+        sb.append("<hr style='border: 1px solid #eee; margin-top: 20px;'>");
         sb.append("<p style='color: #999; font-size: 12px;'>This is an automated notification from KLICKIT.</p>");
         sb.append("</body></html>");
 

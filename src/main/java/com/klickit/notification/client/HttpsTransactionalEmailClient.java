@@ -61,7 +61,7 @@ public class HttpsTransactionalEmailClient implements TransactionalEmailClient {
     @PostConstruct
     public void validateConfigurationOnStartup() {
         if (apiKey.isEmpty()) {
-            log.error("MAIL_API_KEY is not configured! Transactional email notifications will fail until a valid key is provided.");
+            log.warn("MAIL_API_KEY is not configured. Transactional email notifications will be skipped.");
         } else {
             log.info("HttpsTransactionalEmailClient initialized successfully with endpoint: [{}] and sender: [{}]", apiUrl, fromEmail);
         }
@@ -70,7 +70,7 @@ public class HttpsTransactionalEmailClient implements TransactionalEmailClient {
     @Override
     public boolean sendEmail(String to, String subject, String htmlBody) {
         if (apiKey.isEmpty()) {
-            log.error("Cannot dispatch transactional email to [{}]: MAIL_API_KEY is missing or empty", to);
+            log.warn("Cannot dispatch transactional email to [{}]: MAIL_API_KEY is missing or empty. Skipping email notification.", to);
             return false;
         }
 
