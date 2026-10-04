@@ -48,6 +48,7 @@ public class OrderService {
 
     private final OrderRepository orderRepository;
     private final CartRepository cartRepository;
+    private final com.klickit.product.repository.ProductRepository productRepository;
     private final DeliveryPartnerRepository deliveryPartnerRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final Clock clock;
@@ -57,24 +58,27 @@ public class OrderService {
     public OrderService(
             OrderRepository orderRepository,
             CartRepository cartRepository,
+            com.klickit.product.repository.ProductRepository productRepository,
             DeliveryPartnerRepository deliveryPartnerRepository,
             ApplicationEventPublisher eventPublisher) {
-        this(orderRepository, cartRepository, deliveryPartnerRepository, eventPublisher, Clock.systemUTC(), new BigDecimal("25.00"), new BigDecimal("199.00"));
+        this(orderRepository, cartRepository, productRepository, deliveryPartnerRepository, eventPublisher, Clock.systemUTC(), new BigDecimal("25.00"), new BigDecimal("199.00"));
     }
 
     public OrderService(
             OrderRepository orderRepository,
             CartRepository cartRepository,
+            com.klickit.product.repository.ProductRepository productRepository,
             DeliveryPartnerRepository deliveryPartnerRepository,
             ApplicationEventPublisher eventPublisher,
             Clock clock) {
-        this(orderRepository, cartRepository, deliveryPartnerRepository, eventPublisher, clock, new BigDecimal("25.00"), new BigDecimal("199.00"));
+        this(orderRepository, cartRepository, productRepository, deliveryPartnerRepository, eventPublisher, clock, new BigDecimal("25.00"), new BigDecimal("199.00"));
     }
 
     @org.springframework.beans.factory.annotation.Autowired
     public OrderService(
             OrderRepository orderRepository,
             CartRepository cartRepository,
+            com.klickit.product.repository.ProductRepository productRepository,
             DeliveryPartnerRepository deliveryPartnerRepository,
             ApplicationEventPublisher eventPublisher,
             @org.springframework.beans.factory.annotation.Autowired(required = false) Clock clock,
@@ -82,6 +86,7 @@ public class OrderService {
             @Value("${klickit.delivery.free-threshold:199.00}") BigDecimal freeDeliveryThreshold) {
         this.orderRepository = orderRepository;
         this.cartRepository = cartRepository;
+        this.productRepository = productRepository;
         this.deliveryPartnerRepository = deliveryPartnerRepository;
         this.eventPublisher = eventPublisher;
         this.clock = clock != null ? clock : Clock.systemUTC();
@@ -113,14 +118,21 @@ public class OrderService {
         BigDecimal subtotal = BigDecimal.ZERO;
 
         for (CartItem cartItem : cart.getItems()) {
-            BigDecimal lineTotal = cartItem.getUnitPrice()
-                    .multiply(BigDecimal.valueOf(cartItem.getQuantity()));
+            com.klickit.product.entity.Product product = productRepository.findById(cartItem.getProductId())
+                    .orElseThrow(() -> new IllegalStateException("Product not found: " + cartItem.getProductName()));
+            
+            if (!product.isActive()) {
+                throw new IllegalStateException("Product is no longer available: " + product.getName());
+            }
+            
+            BigDecimal currentPrice = product.getPrice();
+            BigDecimal lineTotal = currentPrice.multiply(BigDecimal.valueOf(cartItem.getQuantity()));
             subtotal = subtotal.add(lineTotal);
 
             OrderItem orderItem = OrderItem.builder()
-                    .productName(cartItem.getProductName())
+                    .productName(product.getName())
                     .quantity(cartItem.getQuantity())
-                    .price(cartItem.getUnitPrice())
+                    .price(currentPrice)
                     .build();
             order.addItem(orderItem);
         }

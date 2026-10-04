@@ -44,6 +44,9 @@ class OrderServiceAuthorizationTest {
     private CartRepository cartRepository;
 
     @Mock
+    private com.klickit.product.repository.ProductRepository productRepository;
+
+    @Mock
     private DeliveryPartnerRepository deliveryPartnerRepository;
 
     @Mock
@@ -150,13 +153,17 @@ class OrderServiceAuthorizationTest {
 
         String sessionId = "sess_test_123";
         Cart cart = Cart.builder().sessionId(sessionId).items(new ArrayList<>()).build();
+        UUID itemId = UUID.randomUUID();
         cart.addItem(CartItem.builder()
                 .cart(cart)
-                .productId(UUID.randomUUID())
+                .productId(itemId)
                 .productName("Item 1")
                 .unitPrice(new BigDecimal("50.00"))
                 .quantity(1)
                 .build());
+        com.klickit.product.entity.Product p = com.klickit.product.entity.Product.builder().name("Item 1").price(new BigDecimal("50.00")).active(true).build();
+        p.setId(itemId);
+        when(productRepository.findById(itemId)).thenReturn(Optional.of(p));
 
         when(cartRepository.findBySessionId(sessionId)).thenReturn(Optional.of(cart));
         when(orderRepository.save(any(Order.class))).thenAnswer(inv -> {

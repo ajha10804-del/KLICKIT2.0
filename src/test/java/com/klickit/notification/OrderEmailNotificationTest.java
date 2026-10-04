@@ -67,6 +67,9 @@ class OrderEmailNotificationTest {
     @Mock
     private ApplicationEventPublisher eventPublisher;
 
+    @Mock
+    private com.klickit.product.repository.ProductRepository productRepository;
+
     private EmailService emailService;
     private OrderService orderService;
     private OrderNotificationListener orderNotificationListener;
@@ -81,7 +84,7 @@ class OrderEmailNotificationTest {
     @BeforeEach
     void setUp() {
         emailService = new EmailService(emailClient, "admin@klickit.com", "Asia/Kolkata");
-        orderService = new OrderService(orderRepository, cartRepository, deliveryPartnerRepository, eventPublisher, fixedClock);
+        orderService = new OrderService(orderRepository, cartRepository, productRepository, deliveryPartnerRepository, eventPublisher, fixedClock);
         orderNotificationListener = new OrderNotificationListener(emailService, orderService);
     }
 
@@ -152,14 +155,18 @@ class OrderEmailNotificationTest {
                 .sessionId("sess_12345")
                 .items(new ArrayList<>())
                 .build();
+        UUID maggiId = UUID.randomUUID();
         CartItem cartItem = CartItem.builder()
                 .cart(cart)
-                .productId(UUID.randomUUID())
+                .productId(maggiId)
                 .productName("Maggi")
                 .unitPrice(new BigDecimal("14.00"))
                 .quantity(2)
                 .build();
         cart.addItem(cartItem);
+        com.klickit.product.entity.Product maggi = com.klickit.product.entity.Product.builder().name("Maggi").price(new BigDecimal("14.00")).active(true).build();
+        maggi.setId(maggiId);
+        when(productRepository.findById(maggiId)).thenReturn(Optional.of(maggi));
 
         when(cartRepository.findBySessionId("sess_12345")).thenReturn(Optional.of(cart));
         when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> {
@@ -185,7 +192,11 @@ class OrderEmailNotificationTest {
     @DisplayName("Server calculates authoritative 15-minute deadline, ignoring client-provided value")
     void checkout_calculatesAuthoritativeDeadline_ignoresClientDeadline() {
         Cart cart = Cart.builder().sessionId("sess_test").items(new ArrayList<>()).build();
-        cart.addItem(CartItem.builder().cart(cart).productId(UUID.randomUUID()).productName("Pen").unitPrice(new BigDecimal("10.00")).quantity(1).build());
+        UUID penId = UUID.randomUUID();
+        cart.addItem(CartItem.builder().cart(cart).productId(penId).productName("Pen").unitPrice(new BigDecimal("10.00")).quantity(1).build());
+        com.klickit.product.entity.Product pen = com.klickit.product.entity.Product.builder().name("Pen").price(new BigDecimal("10.00")).active(true).build();
+        pen.setId(penId);
+        when(productRepository.findById(penId)).thenReturn(Optional.of(pen));
 
         when(cartRepository.findBySessionId("sess_test")).thenReturn(Optional.of(cart));
         when(orderRepository.save(any(Order.class))).thenAnswer(inv -> {

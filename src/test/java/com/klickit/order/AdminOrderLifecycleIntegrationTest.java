@@ -66,6 +66,9 @@ class AdminOrderLifecycleIntegrationTest {
     @Mock
     private ApplicationEventPublisher eventPublisher;
 
+    @Mock
+    private com.klickit.product.repository.ProductRepository productRepository;
+
     private OrderService orderService;
     private DeliveryService deliveryService;
 
@@ -79,7 +82,7 @@ class AdminOrderLifecycleIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        orderService = new OrderService(orderRepository, cartRepository, deliveryPartnerRepository, eventPublisher);
+        orderService = new OrderService(orderRepository, cartRepository, productRepository, deliveryPartnerRepository, eventPublisher);
         deliveryService = new DeliveryService(deliveryPartnerRepository, orderRepository, userRepository, new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder());
 
         orderDb.clear();
@@ -206,18 +209,27 @@ class AdminOrderLifecycleIntegrationTest {
                 .sessionId(sessionId)
                 .items(new ArrayList<>())
                 .build();
+        UUID maggiId = UUID.randomUUID();
         cart.addItem(CartItem.builder()
-                .productId(UUID.randomUUID())
+                .productId(maggiId)
                 .productName("Maggi Noodles")
                 .quantity(2)
                 .unitPrice(new BigDecimal("14.00"))
                 .build());
+        com.klickit.product.entity.Product maggi = com.klickit.product.entity.Product.builder().name("Maggi Noodles").price(new BigDecimal("14.00")).active(true).build();
+        maggi.setId(maggiId);
+        when(productRepository.findById(maggiId)).thenReturn(Optional.of(maggi));
+        
+        UUID cokeId = UUID.randomUUID();
         cart.addItem(CartItem.builder()
-                .productId(UUID.randomUUID())
+                .productId(cokeId)
                 .productName("Coca Cola")
                 .quantity(1)
                 .unitPrice(new BigDecimal("40.00"))
                 .build());
+        com.klickit.product.entity.Product coke = com.klickit.product.entity.Product.builder().name("Coca Cola").price(new BigDecimal("40.00")).active(true).build();
+        coke.setId(cokeId);
+        when(productRepository.findById(cokeId)).thenReturn(Optional.of(coke));
 
         when(cartRepository.findBySessionId(sessionId)).thenReturn(Optional.of(cart));
 

@@ -44,6 +44,9 @@ class OrderDeliveryFeeTest {
     private CartRepository cartRepository;
 
     @Mock
+    private com.klickit.product.repository.ProductRepository productRepository;
+
+    @Mock
     private DeliveryPartnerRepository deliveryPartnerRepository;
 
     @Mock
@@ -56,6 +59,7 @@ class OrderDeliveryFeeTest {
         orderService = new OrderService(
                 orderRepository,
                 cartRepository,
+                productRepository,
                 deliveryPartnerRepository,
                 eventPublisher
         );
@@ -80,14 +84,18 @@ class OrderDeliveryFeeTest {
                 .build();
 
         for (CartItemSpec spec : items) {
+            UUID pId = UUID.randomUUID();
             CartItem item = CartItem.builder()
                     .cart(cart)
-                    .productId(UUID.randomUUID())
+                    .productId(pId)
                     .productName(spec.name())
                     .unitPrice(spec.unitPrice())
                     .quantity(spec.quantity())
                     .build();
             cart.addItem(item);
+            com.klickit.product.entity.Product p = com.klickit.product.entity.Product.builder().name(spec.name()).price(spec.unitPrice()).active(true).build();
+            p.setId(pId);
+            when(productRepository.findById(pId)).thenReturn(Optional.of(p));
         }
         return cart;
     }
@@ -219,6 +227,7 @@ class OrderDeliveryFeeTest {
         OrderService customOrderService = new OrderService(
                 orderRepository,
                 cartRepository,
+                productRepository,
                 deliveryPartnerRepository,
                 eventPublisher,
                 Clock.systemUTC(),
