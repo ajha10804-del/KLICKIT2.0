@@ -428,8 +428,59 @@ function DeliveryOrderCard({
         </div>
       </div>
 
+      {/* Order Line Items */}
+      <div className="delivery-items-section">
+        <div className="delivery-items-header">
+          <strong>📦 Items to Deliver</strong>
+          <span className="items-count-badge">{(order.items || []).length} items</span>
+        </div>
+
+        {order.items && order.items.length > 0 ? (
+          <div className="delivery-items-list">
+            {order.items.map((item, idx) => {
+              const uPrice = Number(item.unitPrice ?? item.price ?? 0);
+              const lTotal = Number(item.lineTotal ?? (uPrice * item.quantity));
+              return (
+                <div key={idx} className="delivery-item-row">
+                  <div className="delivery-item-name-qty">
+                    <span className="delivery-item-qty">{item.quantity}×</span>
+                    <span className="delivery-item-name">{item.productName}</span>
+                    <span className="delivery-item-rate">(@ ₹{uPrice.toFixed(0)})</span>
+                  </div>
+                  <span className="delivery-item-total">₹{lTotal.toFixed(0)}</span>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="delivery-no-items">No item details available</div>
+        )}
+      </div>
+
+      {/* Authoritative COD Payment Breakdown */}
+      <div className="delivery-payment-breakdown">
+        <div className="breakdown-line">
+          <span>Items Subtotal:</span>
+          <span>
+            ₹{Number(order.subtotal != null ? order.subtotal : ((order.totalAmount || 0) - (order.deliveryFee || 0))).toFixed(0)}
+          </span>
+        </div>
+        <div className="breakdown-line">
+          <span>Delivery Fee:</span>
+          <span>
+            {Number(order.deliveryFee || 0) > 0
+              ? `₹${Number(order.deliveryFee).toFixed(0)}`
+              : <span className="free-badge">FREE</span>}
+          </span>
+        </div>
+        <div className="breakdown-collect-box">
+          <div className="collect-label">Collect Cash on Delivery (COD):</div>
+          <div className="collect-amount">₹{Number(order.totalAmount || 0).toFixed(0)}</div>
+        </div>
+      </div>
+
       <div className="order-meta">
-        <span>🛍 {order.items?.length || 0} items</span>
+        <span>🛍 {(order.items || []).length} items</span>
         <span>💵 Cash on Delivery</span>
         {order.deadline && (
           <span>

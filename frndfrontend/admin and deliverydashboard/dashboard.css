@@ -1034,6 +1034,126 @@
   font-size: 11px;
 }
 
+.delivery-items-section {
+  margin: 12px 0 10px;
+  background: #fdfdfd;
+  border: 1px solid #edf1ee;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.delivery-items-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 11px;
+  color: #273034;
+}
+
+.items-count-badge {
+  background: #eef7ef;
+  color: #0c831f;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 12px;
+}
+
+.delivery-items-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.delivery-item-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  padding: 4px 0;
+  border-bottom: 1px dashed #f0f3f1;
+}
+
+.delivery-item-row:last-child {
+  border-bottom: none;
+}
+
+.delivery-item-name-qty {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+}
+
+.delivery-item-qty {
+  font-weight: 700;
+  color: #0c831f;
+}
+
+.delivery-item-name {
+  color: #1e262a;
+}
+
+.delivery-item-rate {
+  color: #8a9499;
+  font-size: 10px;
+}
+
+.delivery-item-total {
+  font-weight: 700;
+  color: #1e262a;
+}
+
+.delivery-no-items {
+  font-size: 11px;
+  color: #8a9499;
+  font-style: italic;
+  padding: 4px 0;
+}
+
+.delivery-payment-breakdown {
+  margin: 10px 0 12px;
+  background: #f8faf8;
+  border: 1px solid #e5eee6;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.breakdown-line {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #556269;
+  margin-bottom: 5px;
+}
+
+.free-badge {
+  color: #0c831f;
+  font-weight: 700;
+}
+
+.breakdown-collect-box {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #dfe9e1;
+}
+
+.collect-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #0c831f;
+}
+
+.collect-amount {
+  font-size: 16px;
+  font-weight: 800;
+  color: #0c831f;
+}
+
 .order-meta {
   display: flex;
   gap: 18px;

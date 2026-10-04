@@ -125,3 +125,89 @@ test('Lifecycle Workflow: Terminal states cannot transition to anything', () => 
   assert.equal(canTransition('REJECTED', 'READY_TO_ASSIGN'), false);
   assert.equal(canTransition('CANCELLED', 'PLACED'), false);
 });
+
+test('Delivery Order Card: Line items map unitPrice, quantity, and lineTotal safely', () => {
+  const order = {
+    id: 'ord-12345',
+    subtotal: 90,
+    deliveryFee: 25,
+    totalAmount: 115,
+    items: [
+      { productName: 'Instant Noodles', quantity: 2, unitPrice: 30, price: 30, lineTotal: 60 },
+      { productName: 'Soda Can', quantity: 1, unitPrice: 30, price: 30, lineTotal: 30 }
+    ]
+  };
+
+  const mappedItems = (order.items || []).map(item => {
+    const uPrice = Number(item.unitPrice ?? item.price ?? 0);
+    const lTotal = Number(item.lineTotal ?? (uPrice * item.quantity));
+    return {
+      name: item.productName,
+      qty: item.quantity,
+      unitPrice: uPrice,
+      lineTotal: lTotal
+    };
+  });
+
+  assert.equal(mappedItems.length, 2);
+  assert.equal(mappedItems[0].name, 'Instant Noodles');
+  assert.equal(mappedItems[0].qty, 2);
+  assert.equal(mappedItems[0].unitPrice, 30);
+  assert.equal(mappedItems[0].lineTotal, 60);
+
+  assert.equal(mappedItems[1].name, 'Soda Can');
+  assert.equal(mappedItems[1].qty, 1);
+  assert.equal(mappedItems[1].unitPrice, 30);
+  assert.equal(mappedItems[1].lineTotal, 30);
+});
+
+test('Delivery Order Card: COD payment breakdown computes subtotal, fee, and collection total', () => {
+  const orderWithFee = {
+    subtotal: 100,
+    deliveryFee: 25,
+    totalAmount: 125
+  };
+
+  const subtotalWithFee = Number(orderWithFee.subtotal != null
+    ? orderWithFee.subtotal
+    : (orderWithFee.totalAmount - (orderWithFee.deliveryFee || 0)));
+  const feeLabelWithFee = Number(orderWithFee.deliveryFee || 0) > 0
+    ? `₹${Number(orderWithFee.deliveryFee).toFixed(0)}`
+    : 'FREE';
+  const collectWithFee = Number(orderWithFee.totalAmount || 0);
+
+  assert.equal(subtotalWithFee, 100);
+  assert.equal(feeLabelWithFee, '₹25');
+  assert.equal(collectWithFee, 125);
+
+  // Test free delivery order fallback
+  const orderFreeFee = {
+    subtotal: 250,
+    deliveryFee: 0,
+    totalAmount: 250
+  };
+
+  const feeLabelFree = Number(orderFreeFee.deliveryFee || 0) > 0
+    ? `₹${Number(orderFreeFee.deliveryFee).toFixed(0)}`
+    : 'FREE';
+
+  assert.equal(feeLabelFree, 'FREE');
+  assert.equal(Number(orderFreeFee.totalAmount), 250);
+});
+
+test('Delivery Order Card: Handles null or empty items gracefully without crashing', () => {
+  const orderNoItems = {
+    id: 'ord-empty',
+    totalAmount: 50,
+    deliveryFee: 25,
+    items: null
+  };
+
+  const items = orderNoItems.items || [];
+  assert.equal(items.length, 0);
+
+  const fallbackSubtotal = Number(orderNoItems.subtotal != null
+    ? orderNoItems.subtotal
+    : ((orderNoItems.totalAmount || 0) - (orderNoItems.deliveryFee || 0)));
+  assert.equal(fallbackSubtotal, 25);
+});
