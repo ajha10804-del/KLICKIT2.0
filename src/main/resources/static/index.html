@@ -307,13 +307,13 @@
     }
 
     // Configurable API base URL resolution:
-    // 1. If VITE_API_URL configured at build-time: normalize trailing slashes and ensure single /api
-    // 2. If running on Vercel (*.vercel.app) without VITE_API_URL: fail fast with observable banner
+    // 1. If VITE_API_BASE_URL (or legacy VITE_API_URL) configured at build-time: normalize trailing slashes and ensure single /api
+    // 2. If running on Vercel (*.vercel.app) without VITE_API_BASE_URL: fail fast with observable banner
     // 3. If localhost / 127.0.0.1: point to http://localhost:8080/api (or /api if already under context)
     // 4. If same-origin deployment (served from Spring Boot JAR): /api
     function resolveApiBase() {
-        const rawEnvUrl = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_URL)
-            ? import.meta.env.VITE_API_URL.trim()
+        const rawEnvUrl = (typeof import.meta !== 'undefined' && import.meta.env && (import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL))
+            ? (import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL).trim()
             : '';
 
         if (rawEnvUrl) {
@@ -323,11 +323,11 @@
 
         const hostname = window.location.hostname;
         if (hostname.endsWith('.vercel.app')) {
-            console.error('Fatal: VITE_API_URL build environment variable is not configured for Vercel deployment!');
+            console.error('Fatal: VITE_API_BASE_URL build environment variable is not configured for Vercel deployment!');
             const banner = document.getElementById('config-error-banner');
             if (banner) {
                 banner.style.display = 'block';
-                banner.textContent = 'Configuration Error: VITE_API_URL environment variable is not set. Please configure VITE_API_URL in Vercel pointing to the backend API.';
+                banner.textContent = 'Configuration Error: VITE_API_BASE_URL environment variable is not set. Please configure VITE_API_BASE_URL in Vercel pointing to the backend API.';
             }
             return '';
         }

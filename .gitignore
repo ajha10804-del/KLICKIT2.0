@@ -41,8 +41,9 @@ Thumbs.db
 
 ### Environment & Secrets ###
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+!**/.env.example
 *.env
 
 ### Node / Frontend ###
@@ -50,3 +51,9 @@ node_modules/
 dist/
 .vercel
 
+### Logs & Local DB Files ###
+*.log
+logs/
+*.db
+*.sqlite
+*.sqlite3
