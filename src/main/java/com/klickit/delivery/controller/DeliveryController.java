@@ -4,6 +4,7 @@ import com.klickit.common.dto.ApiResponse;
 import com.klickit.delivery.dto.CreateDeliveryPartnerRequest;
 import com.klickit.delivery.dto.DeliveryPartnerResponse;
 import com.klickit.delivery.service.DeliveryService;
+import com.klickit.order.dto.LocationUpdateRequest;
 import com.klickit.order.dto.OrderResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -67,6 +68,15 @@ public class DeliveryController {
             @PathVariable UUID orderId) {
         OrderResponse order = deliveryService.startDelivery(orderId);
         return ResponseEntity.ok(ApiResponse.success("Order marked as out for delivery", order));
+    }
+
+    @Operation(summary = "Share live delivery location", description = "Assigned delivery partner updates GPS while the order is OUT_FOR_DELIVERY")
+    @PatchMapping("/orders/{orderId}/location")
+    public ResponseEntity<ApiResponse<OrderResponse>> updateLiveLocation(
+            @PathVariable UUID orderId,
+            @Valid @RequestBody LocationUpdateRequest request) {
+        OrderResponse order = deliveryService.updateLiveLocation(orderId, request);
+        return ResponseEntity.ok(ApiResponse.success("Live location updated", order));
     }
 
     @Operation(summary = "Mark order as delivered", description = "Delivery partner marks an assigned order as DELIVERED")
