@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import "./dashboard.css";
+import DeliveryPartnerTrackingMap from "../tracking/DeliveryPartnerTrackingMap.jsx";
 
 const API = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 
@@ -220,6 +221,7 @@ export default function DeliveryDashboard({ user, onSignOut, onNavigateStore, no
                     handleStartDelivery={handleStartDelivery}
                     handleMarkDelivered={handleMarkDelivered}
                     actionLoading={actionLoading}
+                    token={token}
                   />
                 ))}
               </div>
@@ -251,6 +253,7 @@ export default function DeliveryDashboard({ user, onSignOut, onNavigateStore, no
               handleStartDelivery={handleStartDelivery}
               handleMarkDelivered={handleMarkDelivered}
               actionLoading={actionLoading}
+              token={token}
             />
           ))}
           {orders.length === 0 && (
@@ -373,6 +376,7 @@ function DeliveryOrderCard({
   handleStartDelivery,
   handleMarkDelivered,
   actionLoading,
+  token,
 }) {
   const isLoading = actionLoading === order.id;
   const isAssigned = order.status === "ASSIGNED";
@@ -488,6 +492,10 @@ function DeliveryOrderCard({
           </span>
         )}
       </div>
+
+      {isOutForDelivery && (
+        <DeliveryPartnerTrackingMap orderId={order.id} token={token} />
+      )}
 
       <div className="delivery-actions">
         {/* ASSIGNED -> Can Start Delivery */}
