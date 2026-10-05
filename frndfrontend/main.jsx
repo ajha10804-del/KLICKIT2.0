@@ -5,6 +5,11 @@ import AdminDashboard from './admin and deliverydashboard/AdminDashboard.jsx';
 import DeliveryDashboard from './admin and deliverydashboard/DeliveryDashboard.jsx';
 
 const API = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+
+// Delivery radius configuration (set these in your frontend environment variables)
+const STORE_LATITUDE = Number(import.meta.env.VITE_STORE_LATITUDE);
+const STORE_LONGITUDE = Number(import.meta.env.VITE_STORE_LONGITUDE);
+const MAX_DELIVERY_KM = Number(import.meta.env.VITE_MAX_DELIVERY_KM || 5);
 const categories = [
   { name: 'All', icon: '✦', tint: '#fff4ce' }, { name: 'Fruits & Veg', icon: '🥑', tint: '#e5f4df' },
   { name: 'Dairy & Eggs', icon: '🥛', tint: '#e5f1ff' }, { name: 'Munchies', icon: '🍿', tint: '#fff0df' },
@@ -41,6 +46,60 @@ function isTokenExpired(token) {
   } catch {
     return true;
   }
+}
+
+
+function calculateDistanceKm(lat1, lon1, lat2, lon2) {
+  const earthRadiusKm = 6371;
+  const toRadians = degrees => (degrees * Math.PI) / 180;
+
+  const dLat = toRadians(lat2 - lat1);
+  const dLon = toRadians(lon2 - lon1);
+
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRadians(lat1)) *
+      Math.cos(toRadians(lat2)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return earthRadiusKm * c;
+}
+
+function getCurrentCoordinates() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error('Location is not supported by this browser.'));
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      position => {
+        resolve({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy: position.coords.accuracy
+        });
+      },
+      error => {
+        if (error.code === error.PERMISSION_DENIED) {
+          reject(new Error('Please allow location access to check delivery availability.'));
+        } else if (error.code === error.POSITION_UNAVAILABLE) {
+          reject(new Error('Your current location could not be determined. Please try again.'));
+        } else if (error.code === error.TIMEOUT) {
+          reject(new Error('Location request timed out. Please try again.'));
+        } else {
+          reject(new Error('Could not access your location. Please try again.'));
+        }
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 12000,
+        maximumAge: 0
+      }
+    );
+  });
 }
 
 function isValidDeliveryAddress(addr) {
@@ -160,6 +219,8 @@ function App() {
     return isValidDeliveryAddress(saved) ? saved : '';
   });
   const [addressOpen, setAddressOpen] = useState(false);
+  const [deliveryCheck, setDeliveryCheck] = useState(null);
+  const [checkingDelivery, setCheckingDelivery] = useState(false);
   const [authForm, setAuthForm] = useState({ name: '', email: '', password: '', phone: '' });
   const [loading, setLoading] = useState(false);
   const [editingPhone, setEditingPhone] = useState(false);
@@ -200,6 +261,56 @@ function App() {
   const discount = cartItems.reduce((sum, p) => sum + Math.max(0, p.mrp - p.price) * p.qty, 0);
   const notify = message => { setToast(message); window.setTimeout(() => setToast(''), 2800); };
   const changeQty = (id, delta) => setCart(prev => { const next = { ...prev, [id]: Math.max(0, (prev[id] || 0) + delta) }; if (!next[id]) delete next[id]; return next; });
+
+
+  async function checkDeliveryAvailability({ showSuccess = true } = {}) {
+    if (!Number.isFinite(STORE_LATITUDE) || !Number.isFinite(STORE_LONGITUDE)) {
+      notify('Store location is not configured yet. Add VITE_STORE_LATITUDE and VITE_STORE_LONGITUDE.');
+      return null;
+    }
+
+    if (!Number.isFinite(MAX_DELIVERY_KM) || MAX_DELIVERY_KM <= 0) {
+      notify('Delivery radius configuration is invalid.');
+      return null;
+    }
+
+    setCheckingDelivery(true);
+    try {
+      const coordinates = await getCurrentCoordinates();
+      const distanceKm = calculateDistanceKm(
+        STORE_LATITUDE,
+        STORE_LONGITUDE,
+        coordinates.latitude,
+        coordinates.longitude
+      );
+
+      const result = {
+        ...coordinates,
+        distanceKm,
+        eligible: distanceKm <= MAX_DELIVERY_KM,
+        checkedAt: Date.now()
+      };
+
+      setDeliveryCheck(result);
+
+      if (!result.eligible) {
+        notify(`Sorry, you're about ${distanceKm.toFixed(1)} km away. We currently deliver within ${MAX_DELIVERY_KM} km.`);
+        return result;
+      }
+
+      if (showSuccess) {
+        notify(`Delivery available! You're about ${distanceKm.toFixed(1)} km away.`);
+      }
+
+      return result;
+    } catch (err) {
+      setDeliveryCheck(null);
+      notify(err.message || 'Could not check delivery availability.');
+      return null;
+    } finally {
+      setCheckingDelivery(false);
+    }
+  }
 
   const [activeOrder, setActiveOrder] = useState(null);
   const [trackingOpen, setTrackingOpen] = useState(false);
@@ -415,12 +526,19 @@ function App() {
       return;
     }
 
+    // 5. Get a fresh customer GPS position and enforce the 5 km delivery radius.
+    // We use the returned object directly instead of waiting for React state to update.
+    const verifiedLocation = await checkDeliveryAvailability({ showSuccess: false });
+    if (!verifiedLocation || !verifiedLocation.eligible) {
+      return;
+    }
+
     setLoading(true);
     try {
-      // 5. Generate fresh session ID for this checkout attempt
+      // 6. Generate fresh session ID for this checkout attempt
       const sessionId = 'cart_' + (window.crypto?.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2) + Date.now().toString(36));
 
-      // 6. Synchronize local cart items to backend cart session
+      // 7. Synchronize local cart items to backend cart session
       for (const p of cartItems) {
         const addRes = await fetch(`${API}/api/cart/add`, {
           method: 'POST',
@@ -433,7 +551,7 @@ function App() {
         }
       }
 
-      // 7. Call backend checkout with real delivery info and Authorization header
+      // 8. Call backend checkout with real delivery info, GPS coordinates, and Authorization header
       const checkoutRes = await fetch(`${API}/api/orders/checkout`, {
         method: 'POST',
         headers: {
@@ -444,7 +562,10 @@ function App() {
           sessionId,
           customerName: user.name || 'Customer',
           customerPhone: customerPhone,
-          customerAddress: address.trim()
+          customerAddress: address.trim(),
+          customerLatitude: verifiedLocation.latitude,
+          customerLongitude: verifiedLocation.longitude,
+          locationAccuracyMeters: verifiedLocation.accuracy
         })
       });
 
@@ -458,7 +579,7 @@ function App() {
         throw new Error(checkoutBody.message || 'Checkout failed. Please try again.');
       }
 
-      // 8. On success: clear local cart, close cart drawer, and open tracking modal with real order
+      // 9. On success: clear local cart, close cart drawer, and open tracking modal with real order
       const placedOrder = checkoutBody.data;
       setCart({});
       setCartOpen(false);
@@ -580,7 +701,69 @@ function App() {
     <header className="header">
       <a className="brand" href="#top" onClick={(e) => { e.preventDefault(); navigate('/'); }} aria-label="KlickIt home"><span className="brand-mark">k<span>!</span></span><span className="brand-word">klick<span>it</span><i>.</i></span></a>
       <button className="delivery-location" onClick={() => setAddressOpen(!addressOpen)}><span className="location-pin">⌖</span><span className="location-copy"><b>Delivery in 8–15 minutes</b><small>{address || 'Add delivery address'}</small></span><span className="chevron">⌄</span></button>
-      {addressOpen && <div className="address-popover"><b>Where should we deliver?</b><p>Set your delivery address (min 10 characters)</p><input value={address} onChange={e => setAddress(e.target.value)} placeholder="Enter full street address or flat no."/><button onClick={() => { if (!isValidDeliveryAddress(address)) { notify('Address must be at least 10 characters.'); return; } localStorage.setItem('klickit_address', address.trim()); setAddressOpen(false); notify('Delivery location updated'); }}>Save location</button></div>}
+      {addressOpen && <div className="address-popover">
+        <b>Where should we deliver?</b>
+        <p>We currently deliver within {MAX_DELIVERY_KM} km of our store.</p>
+
+        <button
+          type="button"
+          onClick={() => checkDeliveryAvailability()}
+          disabled={checkingDelivery}
+          style={{
+            width: '100%',
+            marginBottom: '10px',
+            background: '#0c831f',
+            color: '#fff',
+            border: 'none',
+            borderRadius: '8px',
+            padding: '10px 12px',
+            cursor: checkingDelivery ? 'wait' : 'pointer',
+            fontWeight: 700
+          }}
+        >
+          {checkingDelivery ? 'Checking your location…' : '⌖ Check delivery availability'}
+        </button>
+
+        {deliveryCheck && (
+          <div
+            style={{
+              marginBottom: '10px',
+              padding: '9px 10px',
+              borderRadius: '8px',
+              fontSize: '11px',
+              fontWeight: 600,
+              background: deliveryCheck.eligible ? '#e8f5e9' : '#fff0f0',
+              color: deliveryCheck.eligible ? '#216e39' : '#b42318',
+              border: deliveryCheck.eligible ? '1px solid #b7dfbd' : '1px solid #ffc7c7'
+            }}
+          >
+            {deliveryCheck.eligible
+              ? `✓ Delivery available — about ${deliveryCheck.distanceKm.toFixed(1)} km away`
+              : `✕ Outside delivery area — about ${deliveryCheck.distanceKm.toFixed(1)} km away`}
+          </div>
+        )}
+
+        <input
+          value={address}
+          onChange={e => setAddress(e.target.value)}
+          placeholder="Enter full street address or flat no."
+        />
+
+        <button
+          type="button"
+          onClick={() => {
+            if (!isValidDeliveryAddress(address)) {
+              notify('Address must be at least 10 characters.');
+              return;
+            }
+            localStorage.setItem('klickit_address', address.trim());
+            setAddressOpen(false);
+            notify('Delivery address saved');
+          }}
+        >
+          Save location
+        </button>
+      </div>}
       <label className="searchbar"><span className="search-icon">⌕</span><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search for atta, dal, chips, and more..."/><kbd>⌘ K</kbd>{search && <button onClick={() => setSearch('')} aria-label="Clear search">×</button>}</label>
 
       {/* Role specific portals */}
