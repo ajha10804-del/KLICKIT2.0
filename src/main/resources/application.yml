@@ -69,6 +69,9 @@ klickit:
   delivery:
     fee: ${DELIVERY_FEE:25.00}
     free-threshold: ${DELIVERY_FREE_THRESHOLD:199.00}
+    store-latitude: ${STORE_LATITUDE:}
+    store-longitude: ${STORE_LONGITUDE:}
+    max-radius-km: ${DELIVERY_MAX_RADIUS_KM:5}
 
 server:
   port: ${PORT:8080}
