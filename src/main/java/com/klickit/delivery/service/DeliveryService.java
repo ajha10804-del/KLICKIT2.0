@@ -5,6 +5,7 @@ import com.klickit.delivery.dto.CreateDeliveryPartnerRequest;
 import com.klickit.delivery.dto.DeliveryPartnerResponse;
 import com.klickit.delivery.entity.DeliveryPartner;
 import com.klickit.delivery.repository.DeliveryPartnerRepository;
+import com.klickit.order.dto.LocationUpdateRequest;
 import com.klickit.order.dto.OrderResponse;
 import com.klickit.order.entity.Order;
 import com.klickit.order.entity.OrderStatus;
@@ -18,6 +19,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -106,6 +108,31 @@ public class DeliveryService {
         }
 
         order.setStatus(OrderStatus.OUT_FOR_DELIVERY);
+        order.setDeliveryLatitude(null);
+        order.setDeliveryLongitude(null);
+        order.setLocationUpdatedAt(null);
+        Order updated = orderRepository.save(order);
+        return OrderResponse.from(updated);
+    }
+
+    @Transactional
+    public OrderResponse updateLiveLocation(UUID orderId, LocationUpdateRequest request) {
+        DeliveryPartner currentPartner = getAuthenticatedDeliveryPartner();
+
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order", "id", orderId));
+
+        if (order.getDeliveryPartnerId() == null || !order.getDeliveryPartnerId().equals(currentPartner.getId())) {
+            throw new AccessDeniedException("You are not authorized to share location for this order");
+        }
+
+        if (order.getStatus() != OrderStatus.OUT_FOR_DELIVERY) {
+            throw new IllegalStateException("Live GPS can only be shared while the order is OUT_FOR_DELIVERY");
+        }
+
+        order.setDeliveryLatitude(request.getLatitude());
+        order.setDeliveryLongitude(request.getLongitude());
+        order.setLocationUpdatedAt(Instant.now());
         Order updated = orderRepository.save(order);
         return OrderResponse.from(updated);
     }
