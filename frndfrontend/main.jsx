@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import './styles.css';
 import AdminDashboard from './admin and deliverydashboard/AdminDashboard.jsx';
 import DeliveryDashboard from './admin and deliverydashboard/DeliveryDashboard.jsx';
+import CustomerTrackingMap from './tracking/CustomerTrackingMap.jsx';
 
 const API = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 
@@ -895,6 +896,15 @@ function App() {
               </div>
             )}
           </div>
+
+          {/* Live customer/rider map. The existing order-tracking UI remains intact. */}
+          {activeOrder?.id && !isCancelled && !isRejected && (
+            <CustomerTrackingMap
+              orderId={activeOrder.id}
+              token={localStorage.getItem('klickit_token') || ''}
+              compact
+            />
+          )}
 
           {/* Ordered items */}
           {Array.isArray(activeOrder.items) && activeOrder.items.length > 0 && (
