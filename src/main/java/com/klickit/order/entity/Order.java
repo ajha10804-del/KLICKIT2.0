@@ -41,6 +41,21 @@ public class Order extends BaseEntity {
 
     private String customerEmail;
 
+    @Column(name = "customer_latitude")
+    private Double customerLatitude;
+
+    @Column(name = "customer_longitude")
+    private Double customerLongitude;
+
+    @Column(name = "delivery_latitude")
+    private Double deliveryLatitude;
+
+    @Column(name = "delivery_longitude")
+    private Double deliveryLongitude;
+
+    @Column(name = "location_updated_at")
+    private Instant locationUpdatedAt;
+
     private Instant deadline;
 
     @Column(nullable = false, precision = 10, scale = 2)
