@@ -1,54 +1,78 @@
 package com.klickit.order.dto;
 
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Pattern;
-import jakarta.validation.constraints.Size;
+import com.klickit.order.entity.Order;
+import com.klickit.order.entity.OrderStatus;
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
 
 @Getter
-@Setter
-@NoArgsConstructor
+@Builder
 @AllArgsConstructor
-public class CheckoutRequest {
+public class OrderResponse {
 
-    @NotBlank(message = "Session ID is required")
-    private String sessionId;
+    private final UUID id;
+    private final String customerName;
+    private final String customerPhone;
+    private final String customerAddress;
+    private final String customerEmail;
+    private final Double customerLatitude;
+    private final Double customerLongitude;
+    private final Double deliveryLatitude;
+    private final Double deliveryLongitude;
+    private final Instant locationUpdatedAt;
+    private final boolean trackingActive;
+    private final Instant deadline;
+    private final BigDecimal totalAmount;
+    private final BigDecimal deliveryFee;
+    private final BigDecimal subtotal;
+    private final UUID deliveryPartnerId;
+    private final String deliveryPartnerName;
+    private final String deliveryPartnerPhone;
+    private final OrderStatus status;
+    private final boolean notificationSent;
+    private final List<OrderItemResponse> items;
+    private final Instant createdAt;
 
-    @NotBlank(message = "Customer name is required")
-    @Size(max = 100, message = "Customer name must not exceed 100 characters")
-    private String customerName;
+    public static OrderResponse from(Order order) {
+        List<OrderItemResponse> itemResponses = order.getItems() != null
+                ? order.getItems().stream().map(OrderItemResponse::from).toList()
+                : List.of();
 
-    @NotBlank(message = "Customer phone is required")
-    @Size(max = 20, message = "Customer phone must not exceed 20 characters")
-    @Pattern(regexp = "^[+0-9\\-\\s()]{7,20}$", message = "Customer phone must be a valid phone number")
-    private String customerPhone;
+        BigDecimal fee = order.getDeliveryFee() != null ? order.getDeliveryFee() : BigDecimal.ZERO;
+        BigDecimal total = order.getTotalAmount() != null ? order.getTotalAmount() : BigDecimal.ZERO;
+        BigDecimal subtotal = total.subtract(fee);
 
-    @NotBlank(message = "Customer address is required")
-    @Size(max = 255, message = "Customer address must not exceed 255 characters")
-    private String customerAddress;
-
-    /**
-     * Optional legacy deadline parameter accepted for backward compatibility,
-     * but ignored by OrderService which calculates the authoritative 15-minute SLA server-side.
-     */
-    private Instant deadline;
-
-    /**
-     * Optional client-supplied email parameter.
-     * Ignored by OrderService which derives authoritative ownership strictly from the authenticated principal.
-     */
-    private String customerEmail;
-
-    public CheckoutRequest(String sessionId, String customerName, String customerPhone, String customerAddress, Instant deadline) {
-        this.sessionId = sessionId;
-        this.customerName = customerName;
-        this.customerPhone = customerPhone;
-        this.customerAddress = customerAddress;
-        this.deadline = deadline;
+        return OrderResponse.builder()
+                .id(order.getId())
+                .customerName(order.getCustomerName())
+                .customerPhone(order.getCustomerPhone())
+                .customerAddress(order.getCustomerAddress())
+                .customerEmail(order.getCustomerEmail())
+                .customerLatitude(order.getCustomerLatitude())
+                .customerLongitude(order.getCustomerLongitude())
+                .deliveryLatitude(order.getDeliveryLatitude())
+                .deliveryLongitude(order.getDeliveryLongitude())
+                .locationUpdatedAt(order.getLocationUpdatedAt())
+                .trackingActive(order.getStatus() == OrderStatus.OUT_FOR_DELIVERY
+                        && order.getDeliveryLatitude() != null
+                        && order.getDeliveryLongitude() != null)
+                .deadline(order.getDeadline())
+                .totalAmount(total)
+                .deliveryFee(fee)
+                .subtotal(subtotal)
+                .deliveryPartnerId(order.getDeliveryPartnerId())
+                .deliveryPartnerName(order.getDeliveryPartnerName())
+                .deliveryPartnerPhone(order.getDeliveryPartnerPhone())
+                .status(order.getStatus())
+                .notificationSent(order.isNotificationSent())
+                .items(itemResponses)
+                .createdAt(order.getCreatedAt())
+                .build();
     }
 }
