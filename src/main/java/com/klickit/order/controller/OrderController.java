@@ -1,91 +1,70 @@
-package com.klickit.order.entity;
+package com.klickit.order.controller;
 
-import com.klickit.common.entity.BaseEntity;
-import jakarta.persistence.CascadeType;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.OneToMany;
-import jakarta.persistence.Table;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import com.klickit.common.dto.ApiResponse;
+import com.klickit.order.dto.CheckoutRequest;
+import com.klickit.order.dto.LocationUpdateRequest;
+import com.klickit.order.dto.OrderResponse;
+import com.klickit.order.service.OrderService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
-import java.math.BigDecimal;
-import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
-@Entity
-@Table(name = "orders")
-@Getter
-@Setter
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class Order extends BaseEntity {
+@RestController
+@RequestMapping("/orders")
+@RequiredArgsConstructor
+@Tag(name = "Orders", description = "Customer order checkout, retrieval, and management APIs")
+public class OrderController {
 
-    @Column(nullable = false)
-    private String customerName;
+    private final OrderService orderService;
 
-    @Column(nullable = false)
-    private String customerPhone;
+    @Operation(summary = "Checkout cart and create order", description = "Checkout endpoint to create an order from a cart session (requires authenticated CUSTOMER)")
+    @PostMapping("/checkout")
+    public ResponseEntity<ApiResponse<OrderResponse>> checkout(
+            @Valid @RequestBody CheckoutRequest request) {
+        OrderResponse order = orderService.checkout(request);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success("Order placed successfully", order));
+    }
 
-    @Column(nullable = false)
-    private String customerAddress;
+    @Operation(summary = "Get order by ID", description = "Retrieve order details by order ID (access controlled)")
+    @GetMapping("/{id}")
+    public ResponseEntity<ApiResponse<OrderResponse>> getOrderById(@PathVariable UUID id) {
+        OrderResponse order = orderService.getOrderById(id);
+        return ResponseEntity.ok(ApiResponse.success(order));
+    }
 
-    private String customerEmail;
+    @Operation(summary = "Update my delivery pin", description = "Customer updates the exact GPS delivery point for their own active order")
+    @org.springframework.web.bind.annotation.PatchMapping("/{id}/delivery-pin")
+    public ResponseEntity<ApiResponse<OrderResponse>> updateDeliveryPin(
+            @PathVariable UUID id,
+            @Valid @RequestBody LocationUpdateRequest request) {
+        OrderResponse order = orderService.updateCustomerDeliveryPin(id, request);
+        return ResponseEntity.ok(ApiResponse.success("Delivery pin updated", order));
+    }
 
-    @Column(name = "customer_latitude")
-    private Double customerLatitude;
+    @Operation(summary = "Get my orders", description = "Retrieve all orders placed by the currently authenticated customer")
+    @GetMapping
+    public ResponseEntity<ApiResponse<List<OrderResponse>>> getMyOrders() {
+        List<OrderResponse> orders = orderService.getCustomerOrders();
+        return ResponseEntity.ok(ApiResponse.success(orders));
+    }
 
-    @Column(name = "customer_longitude")
-    private Double customerLongitude;
-
-    @Column(name = "delivery_latitude")
-    private Double deliveryLatitude;
-
-    @Column(name = "delivery_longitude")
-    private Double deliveryLongitude;
-
-    @Column(name = "location_updated_at")
-    private Instant locationUpdatedAt;
-
-    private Instant deadline;
-
-    @Column(nullable = false, precision = 10, scale = 2)
-    private BigDecimal totalAmount;
-
-    @Builder.Default
-    @Column(name = "delivery_fee", nullable = false, precision = 10, scale = 2)
-    private BigDecimal deliveryFee = BigDecimal.ZERO;
-
-    private UUID deliveryPartnerId;
-
-    private String deliveryPartnerName;
-
-    private String deliveryPartnerPhone;
-
-    @Builder.Default
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private OrderStatus status = OrderStatus.PLACED;
-
-    @Builder.Default
-    @Column(name = "notification_sent", nullable = false)
-    private boolean notificationSent = false;
-
-    @Builder.Default
-    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-    private List<OrderItem> items = new ArrayList<>();
-
-    public void addItem(OrderItem item) {
-        items.add(item);
-        item.setOrder(this);
+    @Operation(summary = "Cancel order", description = "Cancel an existing order if within allowed cancellation state")
+    @PostMapping("/{id}/cancel")
+    public ResponseEntity<ApiResponse<OrderResponse>> cancelOrder(@PathVariable UUID id) {
+        OrderResponse order = orderService.cancelOrder(id);
+        return ResponseEntity.ok(ApiResponse.success("Order cancelled", order));
     }
 }
