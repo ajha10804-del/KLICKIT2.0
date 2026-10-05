@@ -21,6 +21,12 @@ public class OrderResponse {
     private final String customerPhone;
     private final String customerAddress;
     private final String customerEmail;
+    private final Double customerLatitude;
+    private final Double customerLongitude;
+    private final Double deliveryLatitude;
+    private final Double deliveryLongitude;
+    private final Instant locationUpdatedAt;
+    private final boolean trackingActive;
     private final Instant deadline;
     private final BigDecimal totalAmount;
     private final BigDecimal deliveryFee;
@@ -48,6 +54,14 @@ public class OrderResponse {
                 .customerPhone(order.getCustomerPhone())
                 .customerAddress(order.getCustomerAddress())
                 .customerEmail(order.getCustomerEmail())
+                .customerLatitude(order.getCustomerLatitude())
+                .customerLongitude(order.getCustomerLongitude())
+                .deliveryLatitude(order.getDeliveryLatitude())
+                .deliveryLongitude(order.getDeliveryLongitude())
+                .locationUpdatedAt(order.getLocationUpdatedAt())
+                .trackingActive(order.getStatus() == OrderStatus.OUT_FOR_DELIVERY
+                        && order.getDeliveryLatitude() != null
+                        && order.getDeliveryLongitude() != null)
                 .deadline(order.getDeadline())
                 .totalAmount(total)
                 .deliveryFee(fee)
