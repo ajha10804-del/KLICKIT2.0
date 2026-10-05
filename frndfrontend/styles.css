@@ -60,3 +60,120 @@
 .order-card-meta{display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#77796f}
 .order-card-items{font-size:10px;color:#85877e;margin-top:8px;padding-top:8px;border-top:1px dashed #efeee7}
 .order-card-cta{font-size:11px;font-weight:700;color:#245b3b;margin-top:8px;display:flex;align-items:center;gap:4px}
+
+/* =========================================================
+   KLICKIT — 5 KM DELIVERY RADIUS FEATURE
+   Added for the GPS delivery-availability flow in main.jsx
+   ========================================================= */
+
+/* Keep the delivery popover usable when the new GPS controls are shown. */
+.address-popover{
+  width:340px;
+  max-width:calc(100vw - 30px);
+}
+
+/* The first button inside the popover is "Check delivery availability". */
+.address-popover > button:first-of-type{
+  transition:background .18s ease,transform .18s ease,opacity .18s ease,box-shadow .18s ease;
+}
+
+.address-popover > button:first-of-type:hover:not(:disabled){
+  background:#096b19;
+  transform:translateY(-1px);
+  box-shadow:0 6px 16px rgba(12,131,31,.16);
+}
+
+.address-popover > button:first-of-type:active:not(:disabled){
+  transform:translateY(0);
+}
+
+.address-popover > button:first-of-type:disabled{
+  opacity:.62;
+  cursor:wait;
+  transform:none;
+  box-shadow:none;
+}
+
+/* Delivery availability result rendered directly inside address-popover. */
+.address-popover > div{
+  line-height:1.45;
+  word-break:break-word;
+  animation:deliveryRadiusStatusIn .2s ease-out;
+}
+
+/* Make the manual address field visually distinct after the GPS check. */
+.address-popover input{
+  transition:border-color .18s ease,box-shadow .18s ease,background .18s ease;
+}
+
+.address-popover input:focus{
+  border-color:#9bbf9d;
+  box-shadow:0 0 0 3px rgba(36,91,59,.10);
+  background:#fff;
+  outline:none;
+}
+
+/* Save-location button remains consistent with the rest of KlickIt. */
+.address-popover > button:last-of-type{
+  transition:background .18s ease,transform .18s ease,opacity .18s ease;
+}
+
+.address-popover > button:last-of-type:hover{
+  background:#1e4e32;
+  transform:translateY(-1px);
+}
+
+/* Small visual feedback when the GPS status appears. */
+@keyframes deliveryRadiusStatusIn{
+  from{
+    opacity:0;
+    transform:translateY(-4px);
+  }
+  to{
+    opacity:1;
+    transform:translateY(0);
+  }
+}
+
+/* Responsive handling for the larger GPS-enabled delivery popover. */
+@media(max-width:760px){
+  .address-popover{
+    top:60px;
+    left:15px;
+    right:15px;
+    width:auto;
+    max-width:none;
+    padding:16px;
+  }
+
+  .address-popover > b{
+    font-size:13px;
+  }
+
+  .address-popover p{
+    font-size:11px;
+    line-height:1.45;
+    margin-bottom:10px;
+  }
+
+  .address-popover > button{
+    min-height:42px;
+  }
+
+  .address-popover input{
+    min-height:42px;
+  }
+}
+
+@media(max-width:380px){
+  .address-popover{
+    left:10px;
+    right:10px;
+    padding:14px;
+  }
+
+  .address-popover > button,
+  .address-popover input{
+    font-size:11px;
+  }
+}
