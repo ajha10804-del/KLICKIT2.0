@@ -1,0 +1,15 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: true
+
+logging:
+  level:
+    com.klickit: DEBUG
+    org.hibernate.SQL: DEBUG
+
+klickit:
+  otp:
+    # DEV ONLY: if no email provider is configured, print the code in the log instead of failing.
+    dev-log-code: true

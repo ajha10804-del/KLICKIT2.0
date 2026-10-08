@@ -1,0 +1,50 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: klickit-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-klickit}
+      POSTGRES_USER: ${POSTGRES_USER:-klickit}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?required}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5432:5432"
+    volumes:
+      - klickit-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-klickit} -d ${POSTGRES_DB:-klickit}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: klickit-backend
+    ports:
+      - "${PORT:-8080}:${PORT:-8080}"
+    environment:
+      DB_URL: ${DB_URL:-jdbc:postgresql://postgres:5432/klickit}
+      DB_USERNAME: ${DB_USERNAME:-klickit}
+      DB_PASSWORD: ${DB_PASSWORD:?required}
+      JWT_SECRET: ${JWT_SECRET:?required}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:?required}
+      BOOTSTRAP_ADMIN_NAME: ${BOOTSTRAP_ADMIN_NAME:-KlickIt Admin}
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
+      BOOTSTRAP_ADMIN_PHONE: ${BOOTSTRAP_ADMIN_PHONE:-}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+      MAIL_API_KEY: ${MAIL_API_KEY:-}
+      MAIL_FROM: ${MAIL_FROM:-onboarding@resend.dev}
+      MAIL_API_URL: ${MAIL_API_URL:-https://api.resend.com/emails}
+      MAIL_TIMEZONE: ${MAIL_TIMEZONE:-Asia/Kolkata}
+      PORT: ${PORT:-8080}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:5173,http://localhost:8080}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  klickit-db-data:
