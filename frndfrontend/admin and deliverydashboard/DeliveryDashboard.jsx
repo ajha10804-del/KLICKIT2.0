@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import "./dashboard.css";
+import DeliveryPartnerTrackingMap from "../src/components/DeliveryPartnerTrackingMap.jsx";
 
 const API = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 
@@ -217,6 +218,7 @@ export default function DeliveryDashboard({ user, onSignOut, onNavigateStore, no
                   <DeliveryOrderCard
                     key={order.id}
                     order={order}
+                    token={token}
                     handleStartDelivery={handleStartDelivery}
                     handleMarkDelivered={handleMarkDelivered}
                     actionLoading={actionLoading}
@@ -248,6 +250,7 @@ export default function DeliveryDashboard({ user, onSignOut, onNavigateStore, no
             <DeliveryOrderCard
               key={order.id}
               order={order}
+              token={token}
               handleStartDelivery={handleStartDelivery}
               handleMarkDelivered={handleMarkDelivered}
               actionLoading={actionLoading}
@@ -370,6 +373,7 @@ export default function DeliveryDashboard({ user, onSignOut, onNavigateStore, no
 
 function DeliveryOrderCard({
   order,
+  token,
   handleStartDelivery,
   handleMarkDelivered,
   actionLoading,
@@ -488,6 +492,16 @@ function DeliveryOrderCard({
           </span>
         )}
       </div>
+
+      {/* Live GPS Broadcast & Navigation Map */}
+      {(isAssigned || isOutForDelivery) && (
+        <DeliveryPartnerTrackingMap
+          orderId={order.id}
+          token={token}
+          customerLatitude={order.customerLatitude}
+          customerLongitude={order.customerLongitude}
+        />
+      )}
 
       <div className="delivery-actions">
         {/* ASSIGNED -> Can Start Delivery */}

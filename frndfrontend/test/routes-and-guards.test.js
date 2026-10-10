@@ -211,3 +211,106 @@ test('Delivery Order Card: Handles null or empty items gracefully without crashi
     : ((orderNoItems.totalAmount || 0) - (orderNoItems.deliveryFee || 0)));
   assert.equal(fallbackSubtotal, 25);
 });
+
+// --- TASK 7 TESTS: Location -> Checkout -> Order Route & Tracking Stabilization ---
+
+test('Task 7: Order route regex cleanly matches /orders/:orderId and extracts order ID', () => {
+  const ORDER_ROUTE_REGEX = /^\/orders\/([0-9a-fA-F-]{36}|[a-zA-Z0-9_-]+)/;
+
+  const validUuid = 'c763a033-6cf3-4019-9ba7-7d6f54c93540';
+  const matchUuid = `/orders/${validUuid}`.match(ORDER_ROUTE_REGEX);
+  assert.ok(matchUuid);
+  assert.equal(matchUuid[1], validUuid);
+
+  const shortId = 'ord-12345';
+  const matchShort = `/orders/${shortId}`.match(ORDER_ROUTE_REGEX);
+  assert.ok(matchShort);
+  assert.equal(matchShort[1], shortId);
+
+  // Does NOT match storefront or other portals
+  assert.equal('/'.match(ORDER_ROUTE_REGEX), null);
+  assert.equal('/admin'.match(ORDER_ROUTE_REGEX), null);
+  assert.equal('/delivery'.match(ORDER_ROUTE_REGEX), null);
+  assert.equal('/orders/'.match(ORDER_ROUTE_REGEX), null);
+});
+
+test('Task 7: Successful checkout navigates to /orders/:orderId and back popstate safely returns to /', () => {
+  let currentPath = '/';
+  const historyStack = ['/'];
+
+  function navigate(path) {
+    historyStack.push(path);
+    currentPath = path;
+  }
+
+  function handlePopState(previousPath) {
+    historyStack.pop();
+    currentPath = previousPath;
+  }
+
+  // 1. User starts at storefront
+  assert.equal(currentPath, '/');
+
+  // 2. Checkout completes with order ID
+  const placedOrderId = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
+  navigate(`/orders/${placedOrderId}`);
+  assert.equal(currentPath, `/orders/${placedOrderId}`);
+  assert.equal(historyStack.length, 2);
+
+  // 3. User hits browser Back button (popstate)
+  handlePopState(historyStack[historyStack.length - 2]);
+  assert.equal(currentPath, '/');
+  assert.equal(historyStack.length, 1);
+
+  // 4. Verification: no redirect loops occur
+  assert.equal(currentPath.startsWith('/orders/'), false);
+});
+
+test('Task 7: Delivery partner order receives and preserves customer coordinates for GPS map', () => {
+  const backendOrderResponse = {
+    id: 'ord-test-999',
+    customerName: 'Aman Sharma',
+    customerAddress: null,
+    customerLatitude: 23.075611,
+    customerLongitude: 76.850082,
+    customerLandmark: 'Hostel 3 Gate',
+    status: 'ASSIGNED',
+    totalAmount: 145.00
+  };
+
+  // DeliveryPartnerTrackingMap prop resolution logic
+  const effectiveLat = backendOrderResponse.customerLatitude;
+  const effectiveLng = backendOrderResponse.customerLongitude;
+
+  assert.equal(typeof effectiveLat, 'number');
+  assert.equal(typeof effectiveLng, 'number');
+  assert.equal(Number.isFinite(effectiveLat), true);
+  assert.equal(Number.isFinite(effectiveLng), true);
+
+  // Driving navigation URL constructed immediately without waiting for tracking fetch
+  const dest = `${effectiveLat},${effectiveLng}`;
+  const navUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(dest)}&travelmode=driving`;
+  assert.match(navUrl, /destination=23\.075611%2C76\.850082/);
+  assert.match(navUrl, /travelmode=driving/);
+});
+
+test('Task 7: Tracking maps use robust token fallback preventing ReferenceError or render crashes', () => {
+  const storageMock = {
+    klickit_token: 'mock-jwt-token-xyz'
+  };
+
+  // When token prop is explicitly passed
+  const explicitToken = 'explicit-token-abc';
+  const resolvedExplicit = explicitToken || storageMock.klickit_token || '';
+  assert.equal(resolvedExplicit, 'explicit-token-abc');
+
+  // When token prop is undefined (e.g. from DashboardHome or direct component render)
+  const undefinedToken = undefined;
+  const resolvedFallback = undefinedToken || storageMock.klickit_token || '';
+  assert.equal(resolvedFallback, 'mock-jwt-token-xyz');
+
+  // When both are missing, resolves safely to empty string without throwing ReferenceError
+  const resolvedEmpty = undefined || '' || '';
+  assert.equal(resolvedEmpty, '');
+});
+

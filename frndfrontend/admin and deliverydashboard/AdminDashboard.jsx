@@ -66,10 +66,13 @@ function AdminDashboard({ user, onSignOut, onNavigateStore, notify }) {
         throw new Error("Admin session unauthorized or expired.");
       }
       const body = await res.json().catch(() => ({}));
-      if (!res.ok || !body.success || !Array.isArray(body.data)) {
+      const orderList = Array.isArray(body.data)
+        ? body.data
+        : (body.data && Array.isArray(body.data.content) ? body.data.content : null);
+      if (!res.ok || !body.success || !orderList) {
         throw new Error(body.message || "Failed to load orders.");
       }
-      setOrders(body.data);
+      setOrders(orderList);
     } catch (err) {
       setOrderError(err.message);
     } finally {

@@ -3,6 +3,9 @@ import { createRoot } from 'react-dom/client';
 import './styles.css';
 import AdminDashboard from './admin and deliverydashboard/AdminDashboard.jsx';
 import DeliveryDashboard from './admin and deliverydashboard/DeliveryDashboard.jsx';
+import LocationPicker from './src/components/LocationPicker.jsx';
+import CustomerTrackingMap from './src/components/CustomerTrackingMap.jsx';
+import OtpLoginForm from './src/components/OtpLoginForm.jsx';
 
 const API = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 const categories = [
@@ -142,7 +145,7 @@ function App() {
   const [cart, setCart] = useState({});
   const [cartOpen, setCartOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
-  const [authMode, setAuthMode] = useState('login');
+  const [authMode, setAuthMode] = useState('otp');
   const [user, setUser] = useState(() => {
     try {
       const u = JSON.parse(localStorage.getItem('klickit_user') || 'null');
@@ -156,14 +159,31 @@ function App() {
   });
   const [toast, setToast] = useState('');
   const [address, setAddress] = useState(() => {
-    const saved = localStorage.getItem('klickit_address') || '';
-    return isValidDeliveryAddress(saved) ? saved : '';
+    return localStorage.getItem('klickit_address') || '';
+  });
+  const [landmark, setLandmark] = useState(() => {
+    return localStorage.getItem('klickit_landmark') || '';
+  });
+  const [coordinates, setCoordinates] = useState(() => {
+    try {
+      const saved = localStorage.getItem('klickit_coordinates');
+      if (!saved) return null;
+      const parsed = JSON.parse(saved);
+      if (typeof parsed?.latitude === 'number' && typeof parsed?.longitude === 'number') {
+        return parsed;
+      }
+      return null;
+    } catch {
+      return null;
+    }
   });
   const [addressOpen, setAddressOpen] = useState(false);
   const [authForm, setAuthForm] = useState({ name: '', email: '', password: '', phone: '' });
   const [loading, setLoading] = useState(false);
   const [editingPhone, setEditingPhone] = useState(false);
   const [phoneInput, setPhoneInput] = useState('');
+
+  const authToken = (typeof localStorage !== 'undefined' ? localStorage.getItem('klickit_token') : '') || '';
 
   // Client-side router navigation
   useEffect(() => {
@@ -218,12 +238,13 @@ function App() {
     setUser(null);
     setAccountOpen(false);
     setCartOpen(false);
-    setAuthMode('login');
+    setAuthMode('otp');
     setAuthOpen(true);
     notify(msg);
   }
 
   async function fetchOrderHistory() {
+    if (historyLoading) return;
     setHistoryLoading(true);
     setHistoryError(null);
     try {
@@ -259,7 +280,7 @@ function App() {
 
   function openAccount(tab = 'profile') {
     if (!user) {
-      setAuthMode('login');
+      setAuthMode('otp');
       setAuthOpen(true);
       return;
     }
@@ -321,11 +342,15 @@ function App() {
   }
 
   function openTracking(order) {
-    setActiveOrder(order);
-    setTrackingError(null);
-    setTrackingOpen(true);
     if (order?.id) {
-      window.history.replaceState(null, '', `#order-${order.id}`);
+      setActiveOrder(order);
+      setTrackingError(null);
+      navigate(`/orders/${order.id}`);
+      fetchOrder(order.id);
+    } else {
+      setActiveOrder(order);
+      setTrackingError(null);
+      setTrackingOpen(true);
     }
   }
 
@@ -334,19 +359,29 @@ function App() {
     if (window.location.hash.startsWith('#order-')) {
       window.history.replaceState(null, '', window.location.pathname);
     }
+    if (currentPath.startsWith('/orders/')) {
+      navigate('/');
+    }
   }
 
-  // Handle direct navigation or refresh with #order-:id
+  // Handle direct navigation or refresh with /orders/:id or #order-:id
   useEffect(() => {
-    const hash = window.location.hash;
-    if (hash.startsWith('#order-')) {
-      const orderId = hash.replace('#order-', '').trim();
-      if (orderId) {
-        setTrackingOpen(true);
+    const orderRouteMatch = currentPath.match(/^\/orders\/([0-9a-fA-F-]{36}|[a-zA-Z0-9_-]+)/);
+    if (orderRouteMatch) {
+      const orderId = orderRouteMatch[1];
+      if (!activeOrder || activeOrder.id !== orderId) {
         fetchOrder(orderId);
       }
+    } else {
+      const hash = window.location.hash;
+      if (hash.startsWith('#order-')) {
+        const orderId = hash.replace('#order-', '').trim();
+        if (orderId && (!activeOrder || activeOrder.id !== orderId)) {
+          fetchOrder(orderId);
+        }
+      }
     }
-  }, []);
+  }, [currentPath]);
 
   async function submitAuth(e) {
     e.preventDefault(); setLoading(true);
@@ -392,10 +427,10 @@ function App() {
       return;
     }
 
-    // 2. Validate real delivery address
-    if (!isValidDeliveryAddress(address)) {
+    // 2. Validate real delivery coordinates (authoritative geographic source of truth)
+    if (!coordinates || typeof coordinates.latitude !== 'number' || typeof coordinates.longitude !== 'number') {
       setAddressOpen(true);
-      notify('Please enter a valid delivery address (at least 10 characters).');
+      notify('Please set your delivery location on the map to proceed.');
       return;
     }
 
@@ -433,7 +468,9 @@ function App() {
         }
       }
 
-      // 7. Call backend checkout with real delivery info and Authorization header
+      // 7. Call backend checkout with real delivery info, coordinates, landmark, and Authorization header
+      // customerAddress is optional now that coordinates are the authoritative geographic truth
+      const resolvedAddress = address.trim() || null;
       const checkoutRes = await fetch(`${API}/api/orders/checkout`, {
         method: 'POST',
         headers: {
@@ -444,7 +481,10 @@ function App() {
           sessionId,
           customerName: user.name || 'Customer',
           customerPhone: customerPhone,
-          customerAddress: address.trim()
+          customerAddress: resolvedAddress,
+          customerLatitude: coordinates.latitude,
+          customerLongitude: coordinates.longitude,
+          customerLandmark: landmark ? landmark.trim() : null
         })
       });
 
@@ -455,14 +495,26 @@ function App() {
 
       const checkoutBody = await checkoutRes.json().catch(() => ({}));
       if (!checkoutRes.ok || !checkoutBody.success) {
-        throw new Error(checkoutBody.message || 'Checkout failed. Please try again.');
+        const errorMsg = checkoutBody.message || '';
+        if (checkoutRes.status === 400 && (
+            errorMsg.toLowerCase().includes('outside our service area') ||
+            errorMsg.toLowerCase().includes('maximum radius') ||
+            errorMsg.toLowerCase().includes('service area')
+        )) {
+          throw new Error('Delivery is not possible in this area.');
+        }
+        throw new Error(errorMsg || 'Checkout failed. Please try again.');
       }
 
       // 8. On success: clear local cart, close cart drawer, and open tracking modal with real order
       const placedOrder = checkoutBody.data;
       setCart({});
       setCartOpen(false);
-      notify('Order placed successfully! Tracking your delivery…');
+      if (placedOrder?.meetAtGate) {
+        notify('Order placed! Note: VIT campus delivery — please meet at Main Gate.');
+      } else {
+        notify('Order placed successfully! Tracking your delivery…');
+      }
       openTracking(placedOrder);
 
     } catch (err) {
@@ -574,13 +626,221 @@ function App() {
     );
   }
 
+  // ROUTE DISPATCH: Order Details & Live Tracking (/orders/:orderId)
+  const orderRouteMatch = currentPath.match(/^\/orders\/([0-9a-fA-F-]{36}|[a-zA-Z0-9_-]+)/);
+  if (orderRouteMatch) {
+    const orderId = orderRouteMatch[1];
+    return (
+      <div className="app-shell" style={{ minHeight: '100vh', background: '#f8faf9' }}>
+        <header className="header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <a className="brand" href="#top" onClick={(e) => { e.preventDefault(); navigate('/'); }} aria-label="KlickIt home">
+            <span className="brand-mark">k<span>!</span></span>
+            <span className="brand-word">klick<span>it</span><i>.</i></span>
+          </a>
+          <button
+            onClick={() => navigate('/')}
+            style={{
+              padding: '8px 16px',
+              borderRadius: '8px',
+              border: '1px solid #d2d5c8',
+              background: '#fff',
+              fontSize: '12px',
+              fontWeight: 600,
+              color: '#245b3b',
+              cursor: 'pointer'
+            }}
+          >
+            ← Return to Store
+          </button>
+        </header>
+
+        <main style={{ maxWidth: '680px', margin: '24px auto', padding: '0 16px' }}>
+          <div style={{ background: '#fff', borderRadius: '16px', padding: '24px', border: '1px solid #e2e8f0', boxShadow: '0 4px 20px rgba(0,0,0,0.04)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #f1f5f9', paddingBottom: '16px', marginBottom: '20px' }}>
+              <div>
+                <span className="section-kicker">ORDER TRACKING</span>
+                <h1 style={{ fontSize: '20px', fontWeight: 800, margin: '4px 0 2px', color: '#0f172a' }}>
+                  Order #{String(orderId).substring(0, 8)}
+                </h1>
+                <small style={{ color: '#888a7e', fontSize: '11px' }}>ID: {orderId}</small>
+              </div>
+              {currentStatus && (
+                <span className={`status-pill ${String(currentStatus || '').toLowerCase()}`}>
+                  {isCancelled ? '✕ CANCELLED' : isRejected ? '✕ REJECTED' : currentStatus}
+                </span>
+              )}
+            </div>
+
+            {trackingLoading && (
+              <div style={{ textAlign: 'center', padding: '40px 0', color: '#64748b', fontSize: '13px' }}>
+                Loading live order tracking...
+              </div>
+            )}
+
+            {trackingError && (
+              <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px', padding: '16px', color: '#991b1b', fontSize: '12px', margin: '16px 0' }}>
+                <b>Unable to load order: </b>{trackingError}
+                <div style={{ marginTop: '12px' }}>
+                  <button className="btn-refresh" onClick={() => fetchOrder(orderId)} style={{ height: '32px', fontSize: '11px' }}>
+                    ↻ Retry
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {activeOrder && !trackingLoading && (
+              <>
+                {/* Stepper, Cancelled Banner, or Rejected Banner */}
+                {isCancelled ? (
+                  <div className="cancelled-banner terminal-banner" data-testid="terminal-banner-cancelled">
+                    <span style={{ fontSize: '20px' }}>✕</span>
+                    <div>
+                      <b>Order Cancelled</b>
+                      <p>{activeOrder.cancellationReason || 'This order has been cancelled and will not progress to delivery.'}</p>
+                    </div>
+                  </div>
+                ) : isRejected ? (
+                  <div className="cancelled-banner terminal-banner" data-testid="terminal-banner-rejected" style={{ background: '#fef2f2', borderColor: '#fca5a5' }}>
+                    <span style={{ fontSize: '20px', color: '#dc2626' }}>✕</span>
+                    <div>
+                      <b style={{ color: '#991b1b' }}>Order Rejected</b>
+                      <p style={{ color: '#b91c1c' }}>{activeOrder.rejectionReason || 'This order was rejected by the store administrator.'}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="status-stepper" data-testid="status-stepper">
+                    <span className="section-kicker" style={{ fontSize: '8px' }}>DELIVERY PROGRESSION</span>
+                    <div className="stepper-track stepper-steps">
+                      {lifecycleStages.map((stage, idx) => {
+                        const isCompleted = currentStageIndex > idx || (currentStageIndex === idx && stage === 'DELIVERED');
+                        const isActive = currentStageIndex === idx && stage !== 'DELIVERED';
+                        const isDone = currentStageIndex >= idx;
+                        return (
+                          <div
+                            key={stage}
+                            data-testid={`stepper-step-${stage.toLowerCase()}`}
+                            className={`step-item ${isCompleted ? 'completed' : ''} ${isDone ? 'done' : ''} ${isActive ? 'active' : ''}`}
+                          >
+                            {idx < lifecycleStages.length - 1 && (
+                              <div className={`step-line ${currentStageIndex > idx ? 'completed done' : ''}`} />
+                            )}
+                            <div className="step-circle">{isCompleted ? '✓' : idx + 1}</div>
+                            <span className="step-label">{stageLabels[stage] || stage}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Campus Meet-At-Gate Notice */}
+                {activeOrder.meetAtGate && (
+                  <div
+                    data-testid="campus-delivery-warning"
+                    style={{
+                      background: 'rgba(234, 88, 12, 0.1)',
+                      border: '1px solid rgba(234, 88, 12, 0.3)',
+                      borderRadius: '12px',
+                      padding: '14px 16px',
+                      marginBottom: '16px',
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: '12px'
+                    }}
+                  >
+                    <span style={{ fontSize: '20px', lineHeight: 1 }}>🏫</span>
+                    <div>
+                      <strong style={{ display: 'block', color: '#c2410c', fontSize: '13px', marginBottom: '2px' }}>
+                        VIT campus delivery: Please come to the Main Gate to receive your order.
+                      </strong>
+                      <p style={{ margin: 0, fontSize: '12px', color: '#9a3412', lineHeight: '1.4' }}>
+                        Orders addressed to campus locations are handed over directly at the Main Gate for security protocol.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Live Delivery Tracking Map */}
+                <CustomerTrackingMap orderId={activeOrder.id} token={authToken} />
+
+                {/* Order info details */}
+                <div className="tracking-info-grid" style={{ marginTop: '20px' }}>
+                  <div className="info-card">
+                    <small>Total Amount (COD)</small>
+                    <p><b>{money(activeOrder.totalAmount)}</b></p>
+                  </div>
+                  <div className="info-card">
+                    <small>Delivery SLA</small>
+                    <p><b>{activeOrder.deadline ? new Date(activeOrder.deadline).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '15 mins'}</b></p>
+                  </div>
+                  <div className="info-card" style={{ gridColumn: 'span 2' }}>
+                    <small>{activeOrder.customerAddress ? 'Delivery Address' : 'Delivery Location'}</small>
+                    <p>{activeOrder.customerAddress || (activeOrder.customerLatitude ? `Pinned Map Location (${activeOrder.customerLatitude.toFixed(4)}, ${activeOrder.customerLongitude.toFixed(4)})` : 'Pinned map location')}</p>
+                    {activeOrder.customerLandmark && (
+                      <p style={{ marginTop: '4px', fontSize: '12px', color: 'var(--muted, #64748b)' }}>
+                        Delivery Instructions: {activeOrder.customerLandmark}
+                      </p>
+                    )}
+                  </div>
+                  {activeOrder.deliveryPartnerName && (
+                    <div className="info-card" style={{ gridColumn: 'span 2' }}>
+                      <small>Delivery Partner</small>
+                      <p><b>{activeOrder.deliveryPartnerName}</b>{activeOrder.deliveryPartnerPhone ? ` (${activeOrder.deliveryPartnerPhone})` : ''}</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Ordered items */}
+                {Array.isArray(activeOrder.items) && activeOrder.items.length > 0 && (
+                  <div className="tracking-items" style={{ marginTop: '20px' }}>
+                    <span className="section-kicker" style={{ fontSize: '8px', marginBottom: '8px', display: 'block' }}>ITEMS ORDERED ({activeOrder.items.length})</span>
+                    {activeOrder.items.map((item, idx) => (
+                      <div key={idx} className="tracking-item-row">
+                        <div>
+                          <span className="tracking-item-name">{item.productName}</span>
+                          <span className="tracking-item-qty">× {item.quantity}</span>
+                        </div>
+                        <span className="tracking-item-total">{money(item.lineTotal || (item.price * item.quantity))}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Action buttons */}
+                <div className="tracking-actions" style={{ marginTop: '24px' }}>
+                  <button className="btn-refresh" onClick={() => fetchOrder(activeOrder.id)} disabled={trackingLoading}>
+                    <span>↻</span> Refresh Status
+                  </button>
+                  <button className="btn-close-tracking" onClick={() => navigate('/')}>
+                    ← Return to Store
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </main>
+        {toast && <div className="toast"><span>✦</span>{toast}</div>}
+      </div>
+    );
+  }
+
   // DEFAULT ROUTE: Customer Storefront (Friend's visual design 100% preserved)
   return <div className="app-shell">
     <div className="announcement"><span>✦</span> Your everyday essentials, delivered in minutes <span className="announcement-right">Fresh finds. Happy prices. <b>♡</b></span></div>
     <header className="header">
       <a className="brand" href="#top" onClick={(e) => { e.preventDefault(); navigate('/'); }} aria-label="KlickIt home"><span className="brand-mark">k<span>!</span></span><span className="brand-word">klick<span>it</span><i>.</i></span></a>
-      <button className="delivery-location" onClick={() => setAddressOpen(!addressOpen)}><span className="location-pin">⌖</span><span className="location-copy"><b>Delivery in 8–15 minutes</b><small>{address || 'Add delivery address'}</small></span><span className="chevron">⌄</span></button>
-      {addressOpen && <div className="address-popover"><b>Where should we deliver?</b><p>Set your delivery address (min 10 characters)</p><input value={address} onChange={e => setAddress(e.target.value)} placeholder="Enter full street address or flat no."/><button onClick={() => { if (!isValidDeliveryAddress(address)) { notify('Address must be at least 10 characters.'); return; } localStorage.setItem('klickit_address', address.trim()); setAddressOpen(false); notify('Delivery location updated'); }}>Save location</button></div>}
+      <button className="delivery-location" onClick={() => setAddressOpen(true)}>
+        <span className="location-pin">⌖</span>
+        <span className="location-copy">
+          <b>Delivery in 8–15 minutes</b>
+          <small>
+            {coordinates
+              ? (landmark ? `${landmark} (Pinned)` : address ? address : 'Location pinned on map')
+              : 'Set delivery location'}
+          </small>
+        </span>
+        <span className="chevron">⌄</span>
+      </button>
       <label className="searchbar"><span className="search-icon">⌕</span><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search for atta, dal, chips, and more..."/><kbd>⌘ K</kbd>{search && <button onClick={() => setSearch('')} aria-label="Clear search">×</button>}</label>
 
       {/* Role specific portals */}
@@ -626,8 +886,178 @@ function App() {
       <section className="promo-banner"><div className="promo-decoration">✳</div><div><span className="section-kicker">A LITTLE SOMETHING EXTRA</span><h2>Your first basket<br/>looks <em>better on us.</em></h2><p>Good things start with a little treat. Save on your first order.</p></div><div className="promo-code"><span>USE CODE</span><b>KLICKFIRST</b><small>Terms & conditions apply</small></div><div className="promo-sun">☺</div></section>
       <footer className="footer"><div className="footer-top"><div className="footer-brand"><a className="brand" href="#top" onClick={(e) => { e.preventDefault(); navigate('/'); }}><span className="brand-mark">k<span>!</span></span><span className="brand-word">klick<span>it</span><i>.</i></span></a><p>Everyday things. Extraordinary convenience.</p></div><div className="footer-col"><b>Discover</b><a href="#shop">All products</a><a href="#shop" onClick={() => setActiveCategory('Fruits & Veg')}>Fresh produce</a><a href="#shop" onClick={() => setActiveCategory('Munchies')}>Snacks & munchies</a></div><div className="footer-col"><b>Portals</b><a href="#top" onClick={(e) => { e.preventDefault(); navigate('/admin'); }}>Admin Portal</a><a href="#top" onClick={(e) => { e.preventDefault(); navigate('/delivery'); }}>Delivery Portal</a></div><div className="footer-note"><span>MADE FOR YOUR EVERYDAY ✳</span><p>More living, less running around.</p><div className="social-dots"><i>ig</i><i>in</i><i>♡</i></div></div></div><div className="footer-bottom"><span>© 2026 KlickIt. All little joys reserved.</span><span>Made with a little <b>♥</b> for everyday life.</span></div></footer>
     </main>
-    {cartOpen && <><button className="overlay" onClick={() => setCartOpen(false)} aria-label="Close cart"></button><aside className="cart-drawer"><div className="drawer-header"><div><span className="section-kicker">YOUR LITTLE HAUL</span><h2>My cart <span>({cartCount})</span></h2></div><button className="close-button" onClick={() => setCartOpen(false)}>×</button></div>{cartCount ? <><div className="delivery-progress"><span>✦</span><div><b>{subtotal >= 199 ? 'You unlocked free delivery!' : `Add ${money(199-subtotal)} more for free delivery`}</b><div className="progress-track"><i style={{ width: `${Math.min(100, subtotal/199*100)}%` }}></i></div></div></div><div className="drawer-items">{cartItems.map(p => <div className="drawer-item" key={p.id}><img src={p.image} alt=""/><div className="drawer-item-info"><b>{p.name}</b><small>{p.description}</small><strong>{money(p.price)}</strong></div><div className="qty-control"><button onClick={() => changeQty(p.id,-1)}>−</button><b>{p.qty}</b><button onClick={() => changeQty(p.id,1)}>+</button></div></div>)}</div><div className="drawer-summary"><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px dashed #e2e4dc', marginBottom: '10px' }}><div style={{ fontSize: '11px', textAlign: 'left', maxWidth: '70%' }}><span style={{ color: '#888a7e', display: 'block', fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Delivery Address</span><b style={{ color: address ? '#1b1d19' : '#dc2626', wordBreak: 'break-word', display: 'block', marginTop: '2px' }}>{address || 'No address set — required'}</b></div><button type="button" onClick={() => setAddressOpen(true)} style={{ background: '#f5f6f2', border: '1px solid #d2d5c8', borderRadius: '6px', padding: '4px 10px', fontSize: '10px', cursor: 'pointer', fontWeight: 600, color: '#245b3b' }}>{address ? 'Change' : '+ Add'}</button></div><div><span>Item total</span><b>{money(subtotal+discount)}</b></div>{discount > 0 && <div className="saving-line"><span>Product savings</span><b>−{money(discount)}</b></div>}<div><span>Delivery fee</span><b>{delivery ? money(delivery) : <span className="free-label">FREE</span>}</b></div><div className="grand-total"><span>To pay</span><b>{money(subtotal+delivery)}</b></div><button className="checkout-button" onClick={checkout} disabled={loading}>{loading ? 'Working on it…' : <>Proceed to checkout <span>{money(subtotal+delivery)} ↗</span></>}</button><small className="secure-note">♡ Secure checkout · Cash on delivery</small></div></> : <div className="empty-cart"><span>🧺</span><h3>Your basket's taking a nap</h3><p>Let's fill it with a few everyday favourites.</p><button onClick={() => setCartOpen(false)}>Start shopping ↗</button></div>}</aside></>}
-    {authOpen && <div className="modal-wrap"><button className="modal-backdrop" onClick={() => setAuthOpen(false)} aria-label="Close sign in"></button><div className="auth-modal"><button className="close-button modal-close" onClick={() => setAuthOpen(false)}>×</button><div className="auth-brand">k<span>!</span></div><span className="section-kicker">YOUR EVERYDAY, MADE EASIER</span><h2>{authMode === 'login' ? 'Welcome back!' : 'Come on in!'}</h2><p>{authMode === 'login' ? 'Sign in to pick up right where you left off.' : 'Create an account for a little more convenience.'}</p>{authMode === 'login' && <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', alignItems: 'center', flexWrap: 'wrap' }}><span style={{ fontSize: '11px', color: '#6b7280' }}>Quick fill:</span><button type="button" onClick={() => setAuthForm({ ...authForm, email: 'admin@klickit.test', password: 'AdminStrongPassword123!' })} style={{ fontSize: '11px', padding: '4px 10px', background: '#eaf7ec', color: '#0c831f', border: '1px solid #bbf7d0', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}>⚙ Admin Demo</button><button type="button" onClick={() => setAuthForm({ ...authForm, email: 'driver@klickit.test', password: 'DriverPassword123!' })} style={{ fontSize: '11px', padding: '4px 10px', background: '#ede9fe', color: '#6d28d9', border: '1px solid #ddd6fe', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}>🚴 Driver Demo</button></div>}<form onSubmit={submitAuth}>{authMode === 'register' && <input required placeholder="Your name" value={authForm.name} onChange={e => setAuthForm({...authForm, name:e.target.value})}/>}<input required type="email" placeholder="Email address" value={authForm.email} onChange={e => setAuthForm({...authForm, email:e.target.value})}/>{authMode === 'register' && <input required placeholder="Phone number (required)" value={authForm.phone} onChange={e => setAuthForm({...authForm, phone:e.target.value})}/>}<input required minLength="6" type="password" placeholder="Password (at least 6 characters)" value={authForm.password} onChange={e => setAuthForm({...authForm, password:e.target.value})}/><button className="checkout-button" disabled={loading}>{loading ? 'One moment…' : authMode === 'login' ? 'Sign in ↗' : 'Create my account ↗'}</button></form><div className="auth-switch">{authMode === 'login' ? "New around here?" : 'Already have an account?'} <button onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')}>{authMode === 'login' ? 'Create account' : 'Sign in'}</button></div><small className="auth-legal">By continuing, you agree to our Terms of Service and Privacy Policy.</small></div></div>}
+    {addressOpen && (
+      <LocationPicker
+        initialAddress={address}
+        initialLandmark={landmark}
+        initialCoordinates={coordinates}
+        onSave={({ address: newAddr, landmark: newLandmark, coordinates: newCoords }) => {
+          setAddress(newAddr);
+          localStorage.setItem('klickit_address', newAddr);
+          setLandmark(newLandmark || '');
+          if (newLandmark) {
+            localStorage.setItem('klickit_landmark', newLandmark);
+          } else {
+            localStorage.removeItem('klickit_landmark');
+          }
+          setCoordinates(newCoords);
+          localStorage.setItem('klickit_coordinates', JSON.stringify(newCoords));
+          setAddressOpen(false);
+          notify('Delivery location updated');
+        }}
+        onClose={() => setAddressOpen(false)}
+      />
+    )}
+    {cartOpen && <><button className="overlay" onClick={() => setCartOpen(false)} aria-label="Close cart"></button><aside className="cart-drawer"><div className="drawer-header"><div><span className="section-kicker">YOUR LITTLE HAUL</span><h2>My cart <span>({cartCount})</span></h2></div><button className="close-button" onClick={() => setCartOpen(false)}>×</button></div>{cartCount ? <><div className="delivery-progress"><span>✦</span><div><b>{subtotal >= 199 ? 'You unlocked free delivery!' : `Add ${money(199-subtotal)} more for free delivery`}</b><div className="progress-track"><i style={{ width: `${Math.min(100, subtotal/199*100)}%` }}></i></div></div></div><div className="drawer-items">{cartItems.map(p => <div className="drawer-item" key={p.id}><img src={p.image} alt=""/><div className="drawer-item-info"><b>{p.name}</b><small>{p.description}</small><strong>{money(p.price)}</strong></div><div className="qty-control"><button onClick={() => changeQty(p.id,-1)}>−</button><b>{p.qty}</b><button onClick={() => changeQty(p.id,1)}>+</button></div></div>)}</div><div className="drawer-summary"><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px dashed #e2e4dc', marginBottom: '10px' }}><div style={{ fontSize: '11px', textAlign: 'left', maxWidth: '70%' }}><span style={{ color: '#888a7e', display: 'block', fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Delivery Address</span><b style={{ color: address ? '#1b1d19' : '#dc2626', wordBreak: 'break-word', display: 'block', marginTop: '2px' }}>{address ? (address + (landmark ? ` (${landmark})` : '')) : 'No address set — required'}</b>{coordinates ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '9px', color: '#15803d', fontWeight: 600, marginTop: '2px' }}>✓ Location pin set</span> : <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '9px', color: '#dc2626', fontWeight: 600, marginTop: '2px' }}>⚠ Map pin required</span>}</div><button type="button" onClick={() => setAddressOpen(true)} style={{ background: '#f5f6f2', border: '1px solid #d2d5c8', borderRadius: '6px', padding: '4px 10px', fontSize: '10px', cursor: 'pointer', fontWeight: 600, color: '#245b3b' }}>{address ? 'Change' : '+ Add'}</button></div><div><span>Item total</span><b>{money(subtotal+discount)}</b></div>{discount > 0 && <div className="saving-line"><span>Product savings</span><b>−{money(discount)}</b></div>}<div><span>Delivery fee</span><b>{delivery ? money(delivery) : <span className="free-label">FREE</span>}</b></div><div className="grand-total"><span>To pay</span><b>{money(subtotal+delivery)}</b></div><button className="checkout-button" onClick={checkout} disabled={loading}>{loading ? 'Working on it…' : <>Proceed to checkout <span>{money(subtotal+delivery)} ↗</span></>}</button><small className="secure-note">♡ Secure checkout · Cash on delivery</small></div></> : <div className="empty-cart"><span>🧺</span><h3>Your basket's taking a nap</h3><p>Let's fill it with a few everyday favourites.</p><button onClick={() => setCartOpen(false)}>Start shopping ↗</button></div>}</aside></>}
+    {authOpen && (
+      <div className="modal-wrap">
+        <button className="modal-backdrop" onClick={() => setAuthOpen(false)} aria-label="Close sign in"></button>
+        <div className="auth-modal">
+          <button className="close-button modal-close" onClick={() => setAuthOpen(false)}>×</button>
+          <div className="auth-brand">k<span>!</span></div>
+          <span className="section-kicker">YOUR EVERYDAY, MADE EASIER</span>
+
+          <div className="auth-mode-tabs">
+            <button
+              type="button"
+              className={`auth-mode-tab ${authMode === 'otp' ? 'active' : ''}`}
+              onClick={() => setAuthMode('otp')}
+            >
+              Email Code
+            </button>
+            <button
+              type="button"
+              className={`auth-mode-tab ${authMode === 'login' ? 'active' : ''}`}
+              onClick={() => setAuthMode('login')}
+            >
+              Password
+            </button>
+            <button
+              type="button"
+              className={`auth-mode-tab ${authMode === 'register' ? 'active' : ''}`}
+              onClick={() => setAuthMode('register')}
+            >
+              Register
+            </button>
+          </div>
+
+          {authMode === 'otp' && (
+            <>
+              <h2>Sign in with Code</h2>
+              <p>We'll send a 6-digit verification code to your email.</p>
+              <OtpLoginForm
+                onSuccess={(token, profile) => {
+                  localStorage.setItem('klickit_token', token);
+                  localStorage.setItem('klickit_user', JSON.stringify(profile));
+                  setUser(profile);
+                  setAuthOpen(false);
+                  notify(`Welcome${profile.name ? `, ${profile.name}` : ''}!`);
+                  if (profile.role === 'ADMIN') {
+                    navigate('/admin');
+                  } else if (profile.role === 'DELIVERY_PARTNER') {
+                    navigate('/delivery');
+                  }
+                }}
+                onSwitchToPassword={() => setAuthMode('login')}
+                onSwitchToRegister={() => setAuthMode('register')}
+                apiBaseUrl={API}
+              />
+            </>
+          )}
+
+          {authMode === 'login' && (
+            <>
+              <h2>Welcome back!</h2>
+              <p>Sign in to pick up right where you left off.</p>
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '11px', color: '#6b7280' }}>Quick fill:</span>
+                <button
+                  type="button"
+                  onClick={() => setAuthForm({ ...authForm, email: 'admin@klickit.test', password: 'CustomerPassword123!' })}
+                  style={{ fontSize: '11px', padding: '4px 10px', background: '#eaf7ec', color: '#0c831f', border: '1px solid #bbf7d0', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}
+                >
+                  ⚙ Admin Demo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAuthForm({ ...authForm, email: 'driver1@klickit.test', password: 'CustomerPassword123!' })}
+                  style={{ fontSize: '11px', padding: '4px 10px', background: '#ede9fe', color: '#6d28d9', border: '1px solid #ddd6fe', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}
+                >
+                  🚴 Driver Demo
+                </button>
+              </div>
+              <form onSubmit={submitAuth}>
+                <input
+                  required
+                  type="email"
+                  placeholder="Email address"
+                  value={authForm.email}
+                  onChange={e => setAuthForm({ ...authForm, email: e.target.value })}
+                />
+                <input
+                  required
+                  minLength="6"
+                  type="password"
+                  placeholder="Password (at least 6 characters)"
+                  value={authForm.password}
+                  onChange={e => setAuthForm({ ...authForm, password: e.target.value })}
+                />
+                <button className="checkout-button" disabled={loading}>
+                  {loading ? 'One moment…' : 'Sign in ↗'}
+                </button>
+              </form>
+              <div className="auth-switch">
+                Prefer passwordless? <button type="button" onClick={() => setAuthMode('otp')}>Sign in with Email Code</button>
+              </div>
+            </>
+          )}
+
+          {authMode === 'register' && (
+            <>
+              <h2>Come on in!</h2>
+              <p>Create an account for a little more convenience.</p>
+              <form onSubmit={submitAuth}>
+                <input
+                  required
+                  placeholder="Your name"
+                  value={authForm.name}
+                  onChange={e => setAuthForm({ ...authForm, name: e.target.value })}
+                />
+                <input
+                  required
+                  type="email"
+                  placeholder="Email address"
+                  value={authForm.email}
+                  onChange={e => setAuthForm({ ...authForm, email: e.target.value })}
+                />
+                <input
+                  required
+                  placeholder="Phone number (required)"
+                  value={authForm.phone}
+                  onChange={e => setAuthForm({ ...authForm, phone: e.target.value })}
+                />
+                <input
+                  required
+                  minLength="6"
+                  type="password"
+                  placeholder="Password (at least 6 characters)"
+                  value={authForm.password}
+                  onChange={e => setAuthForm({ ...authForm, password: e.target.value })}
+                />
+                <button className="checkout-button" disabled={loading}>
+                  {loading ? 'One moment…' : 'Create my account ↗'}
+                </button>
+              </form>
+              <div className="auth-switch">
+                Already have an account? <button type="button" onClick={() => setAuthMode('otp')}>Sign in with Code</button>
+              </div>
+            </>
+          )}
+
+          <small className="auth-legal">By continuing, you agree to our Terms of Service and Privacy Policy.</small>
+        </div>
+      </div>
+    )}
 
     {trackingOpen && <div className="modal-wrap"><button className="modal-backdrop" onClick={closeTracking} aria-label="Close tracking"></button>
       <div className="tracking-modal">
@@ -658,37 +1088,77 @@ function App() {
 
           {/* Stepper, Cancelled Banner, or Rejected Banner */}
           {isCancelled ? (
-            <div className="cancelled-banner">
+            <div className="cancelled-banner terminal-banner" data-testid="terminal-banner-cancelled">
               <span style={{ fontSize: '20px' }}>✕</span>
               <div>
                 <b>Order Cancelled</b>
-                <p>This order has been cancelled and will not progress to delivery.</p>
+                <p>{activeOrder.cancellationReason || 'This order has been cancelled and will not progress to delivery.'}</p>
               </div>
             </div>
           ) : isRejected ? (
-            <div className="cancelled-banner" style={{ background: '#fef2f2', borderColor: '#fca5a5' }}>
+            <div className="cancelled-banner terminal-banner" data-testid="terminal-banner-rejected" style={{ background: '#fef2f2', borderColor: '#fca5a5' }}>
               <span style={{ fontSize: '20px', color: '#dc2626' }}>✕</span>
               <div>
                 <b style={{ color: '#991b1b' }}>Order Rejected</b>
-                <p style={{ color: '#b91c1c' }}>This order was rejected by the store administrator.</p>
+                <p style={{ color: '#b91c1c' }}>{activeOrder.rejectionReason || 'This order was rejected by the store administrator.'}</p>
               </div>
             </div>
           ) : (
-            <div className="status-stepper">
+            <div className="status-stepper" data-testid="status-stepper">
               <span className="section-kicker" style={{ fontSize: '8px' }}>DELIVERY PROGRESSION</span>
-              <div className="stepper-steps">
+              <div className="stepper-track stepper-steps">
                 {lifecycleStages.map((stage, idx) => {
-                  const done = currentStageIndex >= idx;
-                  const active = currentStageIndex === idx;
+                  const isCompleted = currentStageIndex > idx || (currentStageIndex === idx && stage === 'DELIVERED');
+                  const isActive = currentStageIndex === idx && stage !== 'DELIVERED';
+                  const isDone = currentStageIndex >= idx;
                   return (
-                    <div key={stage} className={`step-item ${done ? 'done' : ''} ${active ? 'active' : ''}`}>
-                      <div className="step-circle">{done ? '✓' : idx + 1}</div>
+                    <div
+                      key={stage}
+                      data-testid={`stepper-step-${stage.toLowerCase()}`}
+                      className={`step-item ${isCompleted ? 'completed' : ''} ${isDone ? 'done' : ''} ${isActive ? 'active' : ''}`}
+                    >
+                      {idx < lifecycleStages.length - 1 && (
+                        <div className={`step-line ${currentStageIndex > idx ? 'completed done' : ''}`} />
+                      )}
+                      <div className="step-circle">{isCompleted ? '✓' : idx + 1}</div>
                       <span className="step-label">{stageLabels[stage] || stage}</span>
                     </div>
                   );
                 })}
               </div>
             </div>
+          )}
+
+          {/* Campus Meet-At-Gate Notice */}
+          {activeOrder.meetAtGate && (
+            <div
+              data-testid="campus-delivery-warning"
+              style={{
+                background: 'rgba(234, 88, 12, 0.1)',
+                border: '1px solid rgba(234, 88, 12, 0.3)',
+                borderRadius: '12px',
+                padding: '14px 16px',
+                marginBottom: '16px',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '12px'
+              }}
+            >
+              <span style={{ fontSize: '20px', lineHeight: 1 }}>🏫</span>
+              <div>
+                <strong style={{ display: 'block', color: '#c2410c', fontSize: '13px', marginBottom: '2px' }}>
+                  VIT campus delivery: Please come to the Main Gate to receive your order.
+                </strong>
+                <p style={{ margin: 0, fontSize: '12px', color: '#9a3412', lineHeight: '1.4' }}>
+                  Orders addressed to campus locations are handed over directly at the Main Gate for security protocol.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Live Delivery Tracking Map */}
+          {activeOrder?.id && (
+            <CustomerTrackingMap orderId={activeOrder.id} token={authToken} />
           )}
 
           {/* Order info details */}
@@ -702,8 +1172,13 @@ function App() {
               <p><b>{activeOrder.deadline ? new Date(activeOrder.deadline).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '15 mins'}</b></p>
             </div>
             <div className="info-card" style={{ gridColumn: 'span 2' }}>
-              <small>Delivery Address</small>
-              <p>{activeOrder.customerAddress || 'Address on file'}</p>
+              <small>{activeOrder.customerAddress ? 'Delivery Address' : 'Delivery Location'}</small>
+              <p>{activeOrder.customerAddress || (activeOrder.customerLatitude ? `Pinned Map Location (${activeOrder.customerLatitude.toFixed(4)}, ${activeOrder.customerLongitude.toFixed(4)})` : 'Pinned map location')}</p>
+              {activeOrder.customerLandmark && (
+                <p style={{ marginTop: '4px', fontSize: '12px', color: 'var(--muted, #64748b)' }}>
+                  Delivery Instructions: {activeOrder.customerLandmark}
+                </p>
+              )}
             </div>
             {activeOrder.deliveryPartnerName && (
               <div className="info-card" style={{ gridColumn: 'span 2' }}>
@@ -741,7 +1216,7 @@ function App() {
     </div>}
 
     {accountOpen && <div className="modal-wrap"><button className="modal-backdrop" onClick={() => setAccountOpen(false)} aria-label="Close account"></button>
-      <div className="account-modal">
+      <div className="account-modal order-history-drawer">
         <div className="tracking-header">
           <div>
             <span className="section-kicker">ACCOUNT & PREFERENCES</span>
@@ -854,46 +1329,108 @@ function App() {
         </div>}
 
         {accountTab === 'history' && <div>
-          {historyLoading && <div style={{ textAlign: 'center', padding: '24px 0', color: '#77796f', fontSize: '12px' }}>Loading your orders...</div>}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+            <span className="section-kicker" style={{ fontSize: '9px', fontWeight: 800, letterSpacing: '0.08em' }}>
+              PAST ORDERS {orderHistory.length > 0 ? `(${orderHistory.length})` : ''}
+            </span>
+            <button
+              className="btn-refresh"
+              onClick={fetchOrderHistory}
+              disabled={historyLoading}
+              style={{ height: '28px', fontSize: '10px', padding: '0 10px', flex: 'none', cursor: historyLoading ? 'wait' : 'pointer' }}
+              aria-label="Refresh order history"
+            >
+              <span>↻</span> {historyLoading ? 'Refreshing...' : 'Refresh'}
+            </button>
+          </div>
 
-          {historyError && <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px', padding: '12px', color: '#991b1b', fontSize: '11px', margin: '12px 0' }}>
-            <b>Error: </b>{historyError}
-            <div style={{ marginTop: '8px' }}><button className="btn-refresh" onClick={fetchOrderHistory} style={{ height: '30px', fontSize: '10px' }}>Retry</button></div>
-          </div>}
-
-          {!historyLoading && !historyError && orderHistory.length === 0 && (
-            <div className="empty-search" style={{ padding: '30px 10px', minHeight: 'auto' }}>
-              <span>🧺</span>
-              <h3>No orders yet</h3>
-              <p>When you place an order, it will appear here so you can track its progress.</p>
-              <button onClick={() => { setAccountOpen(false); document.getElementById('shop')?.scrollIntoView({ behavior: 'smooth' }); }}>Start shopping ↗</button>
+          {historyLoading && orderHistory.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '28px 0', color: '#77796f', fontSize: '12px' }}>
+              Loading your orders...
             </div>
           )}
 
-          {!historyLoading && !historyError && orderHistory.length > 0 && (
+          {historyError && (
+            <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px', padding: '12px', color: '#991b1b', fontSize: '11px', margin: '12px 0' }}>
+              <b>Error: </b>{historyError}
+              <div style={{ marginTop: '8px' }}>
+                <button className="btn-refresh" onClick={fetchOrderHistory} style={{ height: '30px', fontSize: '10px' }}>
+                  Retry
+                </button>
+              </div>
+            </div>
+          )}
+
+          {!historyLoading && !historyError && orderHistory.length === 0 && (
+            <div className="empty-search" style={{ padding: '36px 16px', minHeight: 'auto', textAlign: 'center' }}>
+              <span style={{ fontSize: '42px', marginBottom: '8px', display: 'block' }}>🧺</span>
+              <h3 style={{ margin: '0 0 6px', fontSize: '16px' }}>No orders yet</h3>
+              <p style={{ margin: '0 0 16px', fontSize: '12px', color: '#77796f', lineHeight: 1.5, maxWidth: '280px' }}>
+                When you place an order, it will appear here so you can track its delivery status anytime.
+              </p>
+              <button
+                style={{ background: '#245b3b', color: '#fff', border: 0, borderRadius: '8px', padding: '10px 18px', fontSize: '12px', fontWeight: 700 }}
+                onClick={() => { setAccountOpen(false); document.getElementById('shop')?.scrollIntoView({ behavior: 'smooth' }); }}
+              >
+                Start Shopping ↗
+              </button>
+            </div>
+          )}
+
+          {!historyError && orderHistory.length > 0 && (
             <div className="order-history-list">
               {orderHistory.map(order => {
                 const dateStr = order.createdAt ? new Date(order.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
                 const itemsCount = Array.isArray(order.items) ? order.items.reduce((sum, it) => sum + (it.quantity || 1), 0) : 0;
-                const itemsSummary = Array.isArray(order.items) ? order.items.map(it => it.productName).filter(Boolean).join(', ') : '';
+                const itemsSummary = Array.isArray(order.items)
+                  ? order.items.map(it => `${it.productName}${it.quantity > 1 ? ` (×${it.quantity})` : ''}`).filter(Boolean).join(', ')
+                  : '';
+                const isCancelled = order.status === 'CANCELLED';
+                const isRejected = order.status === 'REJECTED';
+
+                const displayAddress = order.customerAddress && order.customerAddress.trim()
+                  ? order.customerAddress.trim()
+                  : 'Pinned Map Location';
 
                 return (
-                  <button key={order.id} className="order-card-summary" onClick={() => { setAccountOpen(false); openTracking(order); }}>
+                  <button
+                    key={order.id}
+                    className="order-card order-card-summary"
+                    onClick={() => {
+                      setAccountOpen(false);
+                      openTracking(order);
+                      fetchOrder(order.id);
+                    }}
+                  >
                     <div className="order-card-header">
                       <span className="order-card-id">#{String(order.id).substring(0, 8)}</span>
-                      <span className={`status-pill ${String(order.status || '').toLowerCase()}`}>{order.status}</span>
+                      <span className={`status-pill ${String(order.status || '').toLowerCase()}`}>
+                        {isCancelled ? '✕ CANCELLED' : isRejected ? '✕ REJECTED' : order.status}
+                      </span>
                     </div>
+
                     <div className="order-card-meta">
-                      <span>{dateStr || 'Recent'}</span>
-                      <b style={{ color: '#245b3b', fontSize: '13px' }}>{money(order.totalAmount)}</b>
+                      <span className="order-card-date">{dateStr || 'Recent'}</span>
+                      <b className="order-card-total">{money(order.totalAmount)}</b>
                     </div>
+
+                    <div className="order-card-location">
+                      <span className="order-loc-text">📍 {displayAddress}</span>
+                      {order.customerLandmark && (
+                        <span className="order-loc-landmark">({order.customerLandmark})</span>
+                      )}
+                    </div>
+
                     {itemsSummary && (
-                      <div className="order-card-items">
-                        <span>{itemsCount} item{itemsCount !== 1 ? 's' : ''}: </span>
-                        <span>{itemsSummary.length > 60 ? `${itemsSummary.substring(0, 58)}…` : itemsSummary}</span>
+                      <div className="order-card-items order-card-items-preview">
+                        <span className="order-items-count">{itemsCount} item{itemsCount !== 1 ? 's' : ''}: </span>
+                        <span className="order-items-names">{itemsSummary.length > 55 ? `${itemsSummary.substring(0, 52)}…` : itemsSummary}</span>
                       </div>
                     )}
-                    <div className="order-card-cta">Track Order Details <span>↗</span></div>
+
+                    <div className="order-card-footer">
+                      <span className="order-card-cta">Track Order Details <span>↗</span></span>
+                    </div>
                   </button>
                 );
               })}
