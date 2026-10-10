@@ -36,8 +36,21 @@ public class Order extends BaseEntity {
     @Column(nullable = false)
     private String customerPhone;
 
-    @Column(nullable = false)
+    @Column(name = "customer_address")
     private String customerAddress;
+
+    @Column(name = "customer_latitude")
+    private Double customerLatitude;
+
+    @Column(name = "customer_longitude")
+    private Double customerLongitude;
+
+    @Column(name = "customer_landmark")
+    private String customerLandmark;
+
+    @Builder.Default
+    @Column(name = "meet_at_gate", nullable = false)
+    private boolean meetAtGate = false;
 
     private String customerEmail;
 
@@ -61,11 +74,26 @@ public class Order extends BaseEntity {
     @Column(nullable = false)
     private OrderStatus status = OrderStatus.PLACED;
 
+    @Column(name = "driving_distance_meters")
+    private Integer drivingDistanceMeters;
+
+    @Builder.Default
+    @Enumerated(EnumType.STRING)
+    @Column(name = "driving_distance_status", nullable = false, length = 32)
+    private DrivingDistanceStatus drivingDistanceStatus = DrivingDistanceStatus.UNAVAILABLE;
+
+    @Column(name = "driving_distance_destination_lat")
+    private Double drivingDistanceDestinationLat;
+
+    @Column(name = "driving_distance_destination_lng")
+    private Double drivingDistanceDestinationLng;
+
     @Builder.Default
     @Column(name = "notification_sent", nullable = false)
     private boolean notificationSent = false;
 
     @Builder.Default
+    @org.hibernate.annotations.BatchSize(size = 50)
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<OrderItem> items = new ArrayList<>();
 

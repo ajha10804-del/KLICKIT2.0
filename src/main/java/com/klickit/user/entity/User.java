@@ -33,7 +33,8 @@ public class User extends BaseEntity implements UserDetails {
     @Column(nullable = false, unique = true)
     private String email;
 
-    @Column(nullable = false, unique = true)
+    // Optional: customers who sign in with an email OTP have no phone until they add one.
+    @Column(unique = true)
     private String phone;
 
     @Column(nullable = false)

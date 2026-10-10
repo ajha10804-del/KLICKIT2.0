@@ -12,6 +12,7 @@ import javax.crypto.SecretKey;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
+import jakarta.annotation.PostConstruct;
 import java.util.function.Function;
 
 @Service
@@ -22,6 +23,24 @@ public class JwtService {
 
     @Value("${klickit.jwt.expiration-ms}")
     private long expirationMs;
+
+    @PostConstruct
+    public void validateKeyOnStartup() {
+        if (secretKey == null || secretKey.isBlank()) {
+            throw new IllegalStateException("JWT_SECRET must be configured");
+        }
+        try {
+            byte[] keyBytes = Decoders.BASE64.decode(secretKey.trim());
+            if (keyBytes.length < 32) {
+                throw new IllegalStateException("JWT_SECRET must be at least 256 bits (32 bytes) when Base64-decoded");
+            }
+            Keys.hmacShaKeyFor(keyBytes);
+        } catch (IllegalStateException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IllegalStateException("JWT_SECRET is not valid Base64 or does not meet minimum key length requirements (256 bits / 32 bytes): " + e.getMessage(), e);
+        }
+    }
 
     public String extractUsername(String token) {
         return extractClaim(token, Claims::getSubject);

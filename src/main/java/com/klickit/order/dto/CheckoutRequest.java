@@ -17,6 +17,7 @@ import java.time.Instant;
 public class CheckoutRequest {
 
     @NotBlank(message = "Session ID is required")
+    @Size(max = 64, message = "Session ID must not exceed 64 characters")
     private String sessionId;
 
     @NotBlank(message = "Customer name is required")
@@ -28,9 +29,21 @@ public class CheckoutRequest {
     @Pattern(regexp = "^[+0-9\\-\\s()]{7,20}$", message = "Customer phone must be a valid phone number")
     private String customerPhone;
 
-    @NotBlank(message = "Customer address is required")
     @Size(max = 255, message = "Customer address must not exceed 255 characters")
     private String customerAddress;
+
+    private Double customerLatitude;
+
+    private Double customerLongitude;
+
+    @Size(max = 255, message = "Customer landmark must not exceed 255 characters")
+    private String customerLandmark;
+
+    /**
+     * Optional client-supplied meet-at-gate parameter.
+     * Ignored by OrderService which computes the authoritative meetAtGate flag server-side.
+     */
+    private Boolean meetAtGate;
 
     /**
      * Optional legacy deadline parameter accepted for backward compatibility,
@@ -50,5 +63,24 @@ public class CheckoutRequest {
         this.customerPhone = customerPhone;
         this.customerAddress = customerAddress;
         this.deadline = deadline;
+    }
+
+    public CheckoutRequest(String sessionId, String customerName, String customerPhone, String customerAddress, Instant deadline, String customerEmail) {
+        this.sessionId = sessionId;
+        this.customerName = customerName;
+        this.customerPhone = customerPhone;
+        this.customerAddress = customerAddress;
+        this.deadline = deadline;
+        this.customerEmail = customerEmail;
+    }
+
+    public CheckoutRequest(String sessionId, String customerName, String customerPhone, String customerAddress, Double customerLatitude, Double customerLongitude, String customerLandmark) {
+        this.sessionId = sessionId;
+        this.customerName = customerName;
+        this.customerPhone = customerPhone;
+        this.customerAddress = customerAddress;
+        this.customerLatitude = customerLatitude;
+        this.customerLongitude = customerLongitude;
+        this.customerLandmark = customerLandmark;
     }
 }

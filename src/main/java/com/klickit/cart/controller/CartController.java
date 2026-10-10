@@ -17,9 +17,14 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+
 @RestController
 @RequestMapping("/cart")
 @RequiredArgsConstructor
+@Validated
 @Tag(name = "Cart", description = "Shopping cart operations for anonymous and customer sessions")
 public class CartController {
 
@@ -27,7 +32,8 @@ public class CartController {
 
     @Operation(summary = "Get cart by session ID", description = "Public endpoint to retrieve the current cart contents, item count, and subtotal for a given session")
     @GetMapping("/{sessionId}")
-    public ResponseEntity<ApiResponse<CartResponse>> getCart(@PathVariable String sessionId) {
+    public ResponseEntity<ApiResponse<CartResponse>> getCart(
+            @PathVariable @NotBlank(message = "Session ID is required") @Size(max = 64, message = "Session ID must not exceed 64 characters") String sessionId) {
         CartResponse cart = cartService.getCart(sessionId);
         return ResponseEntity.ok(ApiResponse.success(cart));
     }

@@ -1,10 +1,14 @@
 package com.klickit.config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.klickit.common.dto.ApiResponse;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
@@ -33,6 +37,8 @@ import java.util.List;
 @EnableMethodSecurity
 public class SecurityConfig {
 
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().findAndRegisterModules();
+
     private final JwtAuthenticationFilter jwtAuthFilter;
     private final JwtAuthenticationEntryPoint jwtEntryPoint;
     private final UserDetailsService userDetailsService;
@@ -54,12 +60,26 @@ public class SecurityConfig {
         http
                 .cors(Customizer.withDefaults())
                 .csrf(AbstractHttpConfigurer::disable)
-                .exceptionHandling(ex -> ex.authenticationEntryPoint(jwtEntryPoint))
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint(jwtEntryPoint)
+                        .accessDeniedHandler((request, response, accessDeniedException) -> {
+                            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                            OBJECT_MAPPER.writeValue(
+                                    response.getOutputStream(),
+                                    ApiResponse.error("Access denied"));
+                        }))
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         // Public authentication endpoints
                         .requestMatchers("/auth/**").permitAll()
+
+                        // Actuator health and liveness/readiness probes (minimal exposure)
+                        .requestMatchers(
+                                "/actuator/health",
+                                "/actuator/health/**"
+                        ).permitAll()
 
                         // OpenAPI / Swagger UI
                         .requestMatchers(
@@ -101,6 +121,10 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/delivery/partners").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.GET, "/delivery/partners").hasRole("ADMIN")
                         .requestMatchers("/delivery/**").hasRole("DELIVERY_PARTNER")
+
+                        // Live delivery tracking endpoints
+                        .requestMatchers(HttpMethod.POST, "/tracking/*/location").hasRole("DELIVERY_PARTNER")
+                        .requestMatchers(HttpMethod.GET, "/tracking/*").authenticated()
 
                         // Everything else requires authentication
                         .anyRequest().authenticated()

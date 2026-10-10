@@ -34,6 +34,9 @@ public class OrderItem extends BaseEntity {
     @Column(nullable = false)
     private int quantity;
 
+    @Column(name = "product_id")
+    private java.util.UUID productId;
+
     @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal price;
 }

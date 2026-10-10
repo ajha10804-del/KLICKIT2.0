@@ -18,6 +18,7 @@ import java.util.UUID;
 public class AddToCartRequest {
 
     @NotBlank(message = "Session ID is required")
+    @jakarta.validation.constraints.Size(max = 64, message = "Session ID must not exceed 64 characters")
     private String sessionId;
 
     @NotNull(message = "Product ID is required")

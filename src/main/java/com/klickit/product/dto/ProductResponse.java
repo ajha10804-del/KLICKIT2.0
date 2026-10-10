@@ -21,6 +21,7 @@ public class ProductResponse {
     private final String imageUrl;
     private final String category;
     private final boolean active;
+    private final int stock;
     private final Instant createdAt;
     private final Instant updatedAt;
 
@@ -33,6 +34,7 @@ public class ProductResponse {
                 .imageUrl(product.getImageUrl())
                 .category(product.getCategory())
                 .active(product.isActive())
+                .stock(product.getStock())
                 .createdAt(product.getCreatedAt())
                 .updatedAt(product.getUpdatedAt())
                 .build();

@@ -38,4 +38,8 @@ public class Product extends BaseEntity {
     @Builder.Default
     @Column(nullable = false)
     private boolean active = true;
+
+    @Builder.Default
+    @Column(nullable = false)
+    private int stock = 50;
 }

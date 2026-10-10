@@ -12,6 +12,7 @@ import java.math.BigDecimal;
 @AllArgsConstructor
 public class OrderItemResponse {
 
+    private final java.util.UUID productId;
     private final String productName;
     private final int quantity;
     private final BigDecimal price;
@@ -20,6 +21,7 @@ public class OrderItemResponse {
 
     public static OrderItemResponse from(OrderItem item) {
         return OrderItemResponse.builder()
+                .productId(item.getProductId())
                 .productName(item.getProductName())
                 .quantity(item.getQuantity())
                 .price(item.getPrice())

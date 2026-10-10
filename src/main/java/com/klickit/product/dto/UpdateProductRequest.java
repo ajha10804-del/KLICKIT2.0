@@ -31,4 +31,7 @@ public class UpdateProductRequest {
     private String category;
 
     private Boolean active;
+
+    @jakarta.validation.constraints.Min(value = 0, message = "Stock must be non-negative")
+    private Integer stock;
 }

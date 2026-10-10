@@ -11,7 +11,10 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestClient;
 
+import org.springframework.core.env.Environment;
+
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -28,13 +31,15 @@ public class HttpsTransactionalEmailClient implements TransactionalEmailClient {
     private final String apiKey;
     private final String fromEmail;
     private final String apiUrl;
+    private final Environment environment;
 
     @org.springframework.beans.factory.annotation.Autowired
     public HttpsTransactionalEmailClient(
             RestClient.Builder restClientBuilder,
             @Value("${klickit.mail.api-key:}") String apiKey,
             @Value("${klickit.mail.from:onboarding@resend.dev}") String fromEmail,
-            @Value("${klickit.mail.api-url:https://api.resend.com/emails}") String apiUrl) {
+            @Value("${klickit.mail.api-url:https://api.resend.com/emails}") String apiUrl,
+            @org.springframework.beans.factory.annotation.Autowired(required = false) Environment environment) {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(Duration.ofSeconds(5));
         requestFactory.setReadTimeout(Duration.ofSeconds(5));
@@ -45,6 +50,15 @@ public class HttpsTransactionalEmailClient implements TransactionalEmailClient {
         this.apiKey = apiKey != null ? apiKey.trim() : "";
         this.fromEmail = (fromEmail != null && !fromEmail.isBlank()) ? fromEmail.trim() : "onboarding@resend.dev";
         this.apiUrl = (apiUrl != null && !apiUrl.isBlank()) ? apiUrl.trim() : "https://api.resend.com/emails";
+        this.environment = environment;
+    }
+
+    public HttpsTransactionalEmailClient(
+            RestClient.Builder restClientBuilder,
+            String apiKey,
+            String fromEmail,
+            String apiUrl) {
+        this(restClientBuilder, apiKey, fromEmail, apiUrl, null);
     }
 
     public HttpsTransactionalEmailClient(
@@ -52,18 +66,44 @@ public class HttpsTransactionalEmailClient implements TransactionalEmailClient {
             String apiKey,
             String fromEmail,
             String apiUrl) {
+        this(restClient, apiKey, fromEmail, apiUrl, null);
+    }
+
+    public HttpsTransactionalEmailClient(
+            RestClient restClient,
+            String apiKey,
+            String fromEmail,
+            String apiUrl,
+            Environment environment) {
         this.restClient = restClient;
         this.apiKey = apiKey != null ? apiKey.trim() : "";
         this.fromEmail = (fromEmail != null && !fromEmail.isBlank()) ? fromEmail.trim() : "onboarding@resend.dev";
         this.apiUrl = (apiUrl != null && !apiUrl.isBlank()) ? apiUrl.trim() : "https://api.resend.com/emails";
+        this.environment = environment;
     }
 
     @PostConstruct
     public void validateConfigurationOnStartup() {
+        boolean isProd = environment != null && Arrays.asList(environment.getActiveProfiles()).contains("prod");
         if (apiKey.isEmpty()) {
+            if (isProd) {
+                log.error("=========================================================================================");
+                log.error("CRITICAL PRODUCTION CONFIGURATION ERROR: MAIL_API_KEY is not configured!");
+                log.error("In production profile 'prod', transactional email delivery is mandatory.");
+                log.error("Without MAIL_API_KEY, customer OTP login codes and admin order alerts cannot be dispatched.");
+                log.error("=========================================================================================");
+                throw new IllegalStateException("MAIL_API_KEY must be configured when running under 'prod' profile");
+            }
             log.warn("MAIL_API_KEY is not configured. Transactional email notifications will be skipped.");
         } else {
             log.info("HttpsTransactionalEmailClient initialized successfully with endpoint: [{}] and sender: [{}]", apiUrl, fromEmail);
+        }
+
+        if (fromEmail.isBlank()) {
+            if (isProd) {
+                throw new IllegalStateException("MAIL_FROM must be configured when running under 'prod' profile");
+            }
+            log.warn("MAIL_FROM is not configured.");
         }
     }
 

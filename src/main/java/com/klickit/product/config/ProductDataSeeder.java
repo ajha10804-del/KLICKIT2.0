@@ -47,6 +47,7 @@ public class ProductDataSeeder implements CommandLineRunner {
                         .price(seed.price())
                         .category(seed.category())
                         .active(true)
+                        .stock(50)
                         .build();
                 productRepository.save(product);
                 log.info("Seeded product: {}", seed.name());

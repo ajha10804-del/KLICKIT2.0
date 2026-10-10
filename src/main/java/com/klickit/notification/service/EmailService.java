@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.util.HtmlUtils;
 
+import jakarta.annotation.PostConstruct;
 import java.math.BigDecimal;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -36,6 +37,13 @@ public class EmailService {
         this.adminEmail = adminEmail;
         this.displayZoneId = ZoneId.of(mailTimezone != null && !mailTimezone.isBlank() ? mailTimezone.trim() : "Asia/Kolkata");
         this.dateFormatter = DateTimeFormatter.ofPattern("dd MMM yyyy, hh:mm a", Locale.UK).withZone(displayZoneId);
+    }
+
+    @PostConstruct
+    public void validateConfigurationOnStartup() {
+        if (adminEmail == null || adminEmail.isBlank()) {
+            throw new IllegalStateException("ADMIN_EMAIL must be configured");
+        }
     }
 
     public boolean sendOrderConfirmationToAdmin(Order order) {
@@ -172,5 +180,38 @@ public class EmailService {
         sb.append("<td style='padding: 8px; font-weight: bold; width: 150px;'>").append(label).append("</td>");
         sb.append("<td style='padding: 8px;'>").append(value).append("</td>");
         sb.append("</tr>");
+    }
+
+    public boolean sendLoginCode(String to, String code, long validMinutes) {
+        if (to == null || to.isBlank() || code == null || code.isBlank()) {
+            log.warn("Cannot send login code: email or code is empty");
+            return false;
+        }
+
+        try {
+            String subject = "Your KLICKIT Sign-in Code";
+            String escapedCode = HtmlUtils.htmlEscape(code.trim());
+            String htmlBody = "<html><body style='font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;'>"
+                    + "<h2 style='color: #2c3e50; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px;'>Your KLICKIT Sign-in Code</h2>"
+                    + "<p>Use the following 6-digit verification code to sign in to your KLICKIT account:</p>"
+                    + "<div style='font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #2563eb; background: #eff6ff; padding: 16px 24px; text-align: center; border-radius: 8px; margin: 24px 0;'>"
+                    + escapedCode
+                    + "</div>"
+                    + "<p style='color: #64748b; font-size: 14px;'>This code will expire in " + validMinutes + " minutes. If you did not request this code, you can safely ignore this email.</p>"
+                    + "<hr style='border: 1px solid #eee; margin-top: 24px;'>"
+                    + "<p style='color: #999; font-size: 12px;'>This is an automated notification from KLICKIT.</p>"
+                    + "</body></html>";
+
+            boolean success = emailClient.sendEmail(to.trim(), subject, htmlBody);
+            if (success) {
+                log.info("Successfully dispatched login code email");
+            } else {
+                log.warn("Failed to dispatch login code email");
+            }
+            return success;
+        } catch (Exception e) {
+            log.error("Exception while sending login code email: {}", e.getMessage());
+            return false;
+        }
     }
 }

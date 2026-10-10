@@ -34,4 +34,7 @@ public class CreateProductRequest {
 
     @NotBlank(message = "Category is required")
     private String category;
+
+    @jakarta.validation.constraints.Min(value = 0, message = "Stock must be non-negative")
+    private Integer stock;
 }

@@ -15,6 +15,9 @@ import java.util.UUID;
 @Repository
 public interface OrderRepository extends JpaRepository<Order, UUID> {
 
+    org.springframework.data.domain.Page<Order> findAllBy(org.springframework.data.domain.Pageable pageable);
+    org.springframework.data.domain.Page<Order> findByStatus(OrderStatus status, org.springframework.data.domain.Pageable pageable);
+
     List<Order> findByStatusOrderByCreatedAtDesc(OrderStatus status);
 
     List<Order> findAllByOrderByCreatedAtDesc();

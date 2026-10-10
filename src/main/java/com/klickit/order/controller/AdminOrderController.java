@@ -21,6 +21,8 @@ import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.klickit.common.dto.PagedResponse;
+
 import java.util.List;
 import java.util.UUID;
 
@@ -32,13 +34,13 @@ public class AdminOrderController {
 
     private final OrderService orderService;
 
-    @Operation(summary = "Get all orders", description = "Admin-only endpoint to retrieve all orders or filter by status")
+    @Operation(summary = "Get all orders", description = "Admin-only endpoint to retrieve all orders with database pagination and optional status filter")
     @GetMapping
-    public ResponseEntity<ApiResponse<List<OrderResponse>>> getAllOrders(
-            @RequestParam(required = false) OrderStatus status) {
-        List<OrderResponse> orders = (status != null)
-                ? orderService.getOrdersByStatus(status)
-                : orderService.getAllOrders();
+    public ResponseEntity<ApiResponse<PagedResponse<OrderResponse>>> getAllOrders(
+            @RequestParam(required = false) OrderStatus status,
+            @RequestParam(required = false, defaultValue = "0") Integer page,
+            @RequestParam(required = false, defaultValue = "20") Integer size) {
+        PagedResponse<OrderResponse> orders = orderService.getAdminOrdersPaged(status, page, size);
         return ResponseEntity.ok(ApiResponse.success(orders));
     }
 
