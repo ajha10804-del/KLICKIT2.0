@@ -26,10 +26,12 @@ services:
     ports:
       - "${PORT:-8080}:${PORT:-8080}"
     environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
       DB_URL: ${DB_URL:-jdbc:postgresql://postgres:5432/klickit}
       DB_USERNAME: ${DB_USERNAME:-klickit}
       DB_PASSWORD: ${DB_PASSWORD:?required}
       JWT_SECRET: ${JWT_SECRET:?required}
+      OTP_SECRET: ${OTP_SECRET:?required}
       ADMIN_EMAIL: ${ADMIN_EMAIL:?required}
       BOOTSTRAP_ADMIN_NAME: ${BOOTSTRAP_ADMIN_NAME:-KlickIt Admin}
       BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
@@ -41,6 +43,10 @@ services:
       MAIL_TIMEZONE: ${MAIL_TIMEZONE:-Asia/Kolkata}
       PORT: ${PORT:-8080}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:5173,http://localhost:8080}
+      KLICKIT_ROUTING_API_KEY: ${KLICKIT_ROUTING_API_KEY:-}
+      ROUTING_ENABLED: ${ROUTING_ENABLED:-true}
+      CART_RETENTION_DAYS: ${CART_RETENTION_DAYS:-30}
+      SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
     depends_on:
       postgres:
         condition: service_healthy

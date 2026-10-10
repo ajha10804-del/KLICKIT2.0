@@ -8,3 +8,14 @@ logging:
   level:
     com.klickit: DEBUG
     org.hibernate.SQL: DEBUG
+
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
+
+klickit:
+  otp:
+    secret: ${OTP_SECRET:dev-dummy-otp-secret-key-for-local-testing-purposes-12345}
+    dev-log-code: true

@@ -2,6 +2,9 @@ FROM eclipse-temurin:21-jdk-alpine AS builder
 
 WORKDIR /app
 
+# Ensure required download tools and certificates exist for the Maven wrapper
+RUN apk add --no-cache curl ca-certificates bash unzip
+
 # Copy Maven wrapper and POM
 COPY .mvn/ .mvn/
 COPY mvnw pom.xml ./
@@ -31,5 +34,7 @@ RUN chown klickit:klickit app.jar
 USER klickit
 
 EXPOSE 8080
+
+ENV SPRING_PROFILES_ACTIVE=prod
 
 ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75", "-jar", "app.jar"]
