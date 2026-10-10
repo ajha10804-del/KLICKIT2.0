@@ -96,6 +96,7 @@ class OrderDeliveryFeeTest {
             com.klickit.product.entity.Product p = com.klickit.product.entity.Product.builder().name(spec.name()).price(spec.unitPrice()).active(true).build();
             p.setId(pId);
             when(productRepository.findById(pId)).thenReturn(Optional.of(p));
+            org.mockito.Mockito.lenient().when(productRepository.decrementStockIfAvailable(org.mockito.ArgumentMatchers.eq(pId), org.mockito.ArgumentMatchers.any(int.class))).thenReturn(1);
         }
         return cart;
     }

@@ -222,4 +222,65 @@ class ProductionConfigBindingTest {
     void freeDeliveryThresholdDefaultsTo199() {
         assertThat(env.getProperty("klickit.delivery.free-threshold")).isEqualTo("199.00");
     }
+
+    // ── application-prod.yml Verification ──────────────────────────
+
+    @Test
+    @DisplayName("application-prod.yml resolves all explicit production environment variables")
+    void prodYamlResolvesExplicitEnvVars() throws IOException {
+        StandardEnvironment prodEnv = new StandardEnvironment();
+        Map<String, Object> simProdEnv = new HashMap<>();
+        simProdEnv.put("DB_URL", "jdbc:postgresql://neon.tech/klickit_prod");
+        simProdEnv.put("DB_USERNAME", "prod_user");
+        simProdEnv.put("DB_PASSWORD", "prod_password_123");
+        simProdEnv.put("CORS_ALLOWED_ORIGINS", "https://klickit.example.com");
+        simProdEnv.put("JWT_SECRET", SIM_JWT_SECRET);
+        simProdEnv.put("OTP_SECRET", "prod-otp-secret-key-for-hashing-minimum-32-chars");
+        simProdEnv.put("MAIL_API_KEY", SIM_MAIL_API_KEY);
+
+        MutablePropertySources sources = prodEnv.getPropertySources();
+        sources.addFirst(new MapPropertySource("simulated-prod-env", simProdEnv));
+
+        FileSystemResource prodYamlFile = new FileSystemResource("src/main/resources/application-prod.yml");
+        assertThat(prodYamlFile.exists())
+                .as("Production profile YAML must exist at src/main/resources/application-prod.yml")
+                .isTrue();
+
+        YamlPropertySourceLoader loader = new YamlPropertySourceLoader();
+        List<PropertySource<?>> yamlSources = loader.load("prod-yaml", prodYamlFile);
+        for (PropertySource<?> ps : yamlSources) {
+            sources.addLast(ps);
+        }
+
+        assertThat(prodEnv.getProperty("spring.datasource.url")).isEqualTo("jdbc:postgresql://neon.tech/klickit_prod");
+        assertThat(prodEnv.getProperty("spring.datasource.username")).isEqualTo("prod_user");
+        assertThat(prodEnv.getProperty("spring.datasource.password")).isEqualTo("prod_password_123");
+        assertThat(prodEnv.getProperty("klickit.cors.allowed-origins")).isEqualTo("https://klickit.example.com");
+        assertThat(prodEnv.getProperty("klickit.jwt.secret")).isEqualTo(SIM_JWT_SECRET);
+        assertThat(prodEnv.getProperty("klickit.otp.secret")).isEqualTo("prod-otp-secret-key-for-hashing-minimum-32-chars");
+        assertThat(prodEnv.getProperty("klickit.otp.dev-log-code")).isEqualTo("false");
+        assertThat(prodEnv.getProperty("klickit.mail.api-key")).isEqualTo(SIM_MAIL_API_KEY);
+        assertThat(prodEnv.getProperty("springdoc.api-docs.enabled")).isEqualTo("false");
+        assertThat(prodEnv.getProperty("springdoc.swagger-ui.enabled")).isEqualTo("false");
+    }
+
+    @Test
+    @DisplayName("application-prod.yml has no silent localhost fallbacks for DB or CORS")
+    void prodYamlHasNoSilentFallbacks() throws IOException {
+        FileSystemResource prodYamlFile = new FileSystemResource("src/main/resources/application-prod.yml");
+        assertThat(prodYamlFile.exists()).isTrue();
+
+        YamlPropertySourceLoader loader = new YamlPropertySourceLoader();
+        List<PropertySource<?>> yamlSources = loader.load("prod-yaml-raw", prodYamlFile);
+        assertThat(yamlSources).isNotEmpty();
+
+        PropertySource<?> ps = yamlSources.get(0);
+        // Assert raw property definitions contain direct placeholder without fallback syntax
+        assertThat((String) ps.getProperty("spring.datasource.url")).isEqualTo("${DB_URL}");
+        assertThat((String) ps.getProperty("spring.datasource.username")).isEqualTo("${DB_USERNAME}");
+        assertThat((String) ps.getProperty("klickit.cors.allowed-origins")).isEqualTo("${CORS_ALLOWED_ORIGINS}");
+        assertThat((String) ps.getProperty("klickit.jwt.secret")).isEqualTo("${JWT_SECRET}");
+        assertThat((String) ps.getProperty("klickit.otp.secret")).isEqualTo("${OTP_SECRET}");
+        assertThat((String) ps.getProperty("klickit.mail.api-key")).isEqualTo("${MAIL_API_KEY}");
+    }
 }

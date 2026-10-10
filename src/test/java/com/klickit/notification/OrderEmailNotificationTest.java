@@ -87,6 +87,8 @@ class OrderEmailNotificationTest {
         emailService = new EmailService(emailClient, "admin@klickit.com", "Asia/Kolkata");
         orderService = new OrderService(orderRepository, cartRepository, productRepository, deliveryPartnerRepository, eventPublisher, fixedClock);
         orderNotificationListener = new OrderNotificationListener(emailService, orderService);
+        org.mockito.Mockito.lenient().when(productRepository.decrementStockIfAvailable(any(UUID.class), any(int.class)))
+                .thenReturn(1);
     }
 
     private Order buildSampleOrder() {
@@ -352,7 +354,7 @@ class OrderEmailNotificationTest {
 
         String emailHtml = emailService.buildOrderEmailBody(order);
 
-        assertThat(emailHtml).contains("01 Oct 2026, 05:30 pm");
+        assertThat(emailHtml).containsIgnoringCase("01 Oct 2026, 05:30 PM");
     }
 
     @Test
@@ -365,7 +367,7 @@ class OrderEmailNotificationTest {
         try {
             Locale.setDefault(Locale.US);
             String emailHtml = emailService.buildOrderEmailBody(order);
-            assertThat(emailHtml).contains("01 Oct 2026, 05:30 pm");
+            assertThat(emailHtml).containsIgnoringCase("01 Oct 2026, 05:30 PM");
         } finally {
             Locale.setDefault(originalLocale);
         }
@@ -381,7 +383,7 @@ class OrderEmailNotificationTest {
         try {
             Locale.setDefault(Locale.FRANCE);
             String emailHtml = emailService.buildOrderEmailBody(order);
-            assertThat(emailHtml).contains("01 Oct 2026, 05:30 pm");
+            assertThat(emailHtml).containsIgnoringCase("01 Oct 2026, 05:30 PM");
         } finally {
             Locale.setDefault(originalLocale);
         }

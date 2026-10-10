@@ -55,6 +55,12 @@ class OrderServiceAuthorizationTest {
     @InjectMocks
     private OrderService orderService;
 
+    @org.junit.jupiter.api.BeforeEach
+    void setUp() {
+        org.mockito.Mockito.lenient().when(productRepository.decrementStockIfAvailable(any(UUID.class), any(int.class)))
+                .thenReturn(1);
+    }
+
     @AfterEach
     void tearDown() {
         SecurityContextHolder.clearContext();

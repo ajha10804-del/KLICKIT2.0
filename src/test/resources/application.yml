@@ -25,8 +25,55 @@ klickit:
   jwt:
     secret: ${JWT_SECRET:dGVzdC1kdW1teS1zZWNyZXQta2V5LWZvci11bml0LXRlc3RzLW11c3QtYmUtYXQtbGVhc3QtMjU2LWJpdHMtbG9uZw==}
     expiration-ms: 3600000
+  otp:
+    enabled: true
+    secret: ${OTP_SECRET:test-dummy-otp-secret-key-for-unit-tests-must-be-long-enough-12345}
+    ttl-minutes: 5
+    max-attempts: 5
+    resend-cooldown-seconds: 60
+    max-requests-per-hour: 5
+    dev-log-code: false
   cors:
     allowed-origins: http://localhost:3000,http://localhost:5173,http://localhost:8080
   delivery:
     fee: 25.00
     free-threshold: 199.00
+    store:
+      latitude: 23.073427650432762
+      longitude: 76.82864818972119
+      max-radius-km: 6.0
+    campus:
+      gate-latitude: 23.075611
+      gate-longitude: 76.850082
+      radius-m: 1100.0
+    enforce-range: false
+  routing:
+    enabled: false
+    api-key: ""
+    max-distance-meters: 5000
+
+springdoc:
+  api-docs:
+    enabled: ${SWAGGER_ENABLED:false}
+  swagger-ui:
+    enabled: ${SWAGGER_ENABLED:false}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true
+      group:
+        liveness:
+          include: livenessState
+        readiness:
+          include: readinessState,db
+  health:
+    mail:
+      enabled: false

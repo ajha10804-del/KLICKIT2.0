@@ -48,6 +48,12 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
+import com.klickit.order.entity.DrivingDistanceStatus;
+import com.klickit.order.routing.DrivingDistanceResult;
+import com.klickit.order.routing.DrivingDistanceService;
+import com.klickit.order.service.DeliveryLocationProperties;
+import java.time.Clock;
+
 @ExtendWith(MockitoExtension.class)
 class AdminOrderLifecycleIntegrationTest {
 
@@ -69,6 +75,9 @@ class AdminOrderLifecycleIntegrationTest {
     @Mock
     private com.klickit.product.repository.ProductRepository productRepository;
 
+    @Mock
+    private DrivingDistanceService drivingDistanceService;
+
     private OrderService orderService;
     private DeliveryService deliveryService;
 
@@ -82,7 +91,10 @@ class AdminOrderLifecycleIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        orderService = new OrderService(orderRepository, cartRepository, productRepository, deliveryPartnerRepository, eventPublisher);
+        lenient().when(drivingDistanceService.calculateDistance(any(Double.class), any(Double.class), any(Double.class), any(Double.class)))
+                .thenReturn(DrivingDistanceResult.eligible(3500));
+
+        orderService = new OrderService(orderRepository, cartRepository, productRepository, deliveryPartnerRepository, eventPublisher, Clock.systemUTC(), new BigDecimal("25.00"), new BigDecimal("199.00"), new DeliveryLocationProperties(), drivingDistanceService);
         deliveryService = new DeliveryService(deliveryPartnerRepository, orderRepository, userRepository, new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder());
 
         orderDb.clear();
@@ -178,6 +190,11 @@ class AdminOrderLifecycleIntegrationTest {
                             .filter(o -> pid.equals(o.getDeliveryPartnerId()) && statuses.contains(o.getStatus()))
                             .toList();
                 });
+
+        lenient().when(productRepository.decrementStockIfAvailable(any(UUID.class), any(int.class)))
+                .thenReturn(1);
+        lenient().when(productRepository.incrementStock(any(UUID.class), any(int.class)))
+                .thenReturn(1);
     }
 
     @AfterEach
@@ -238,7 +255,9 @@ class AdminOrderLifecycleIntegrationTest {
                 "Student Jay",
                 "9876543210",
                 "Hostel 3, Room 102",
-                Instant.now().plusSeconds(3600)
+                23.075611,
+                76.850082,
+                "Near Gate"
         );
 
         OrderResponse createdOrder = orderService.checkout(checkoutRequest);
@@ -493,6 +512,12 @@ class AdminOrderLifecycleIntegrationTest {
                 .customerName("Customer Valid")
                 .customerPhone("1234567890")
                 .customerAddress("Block V")
+                .customerLatitude(23.075611)
+                .customerLongitude(76.850082)
+                .drivingDistanceMeters(3500)
+                .drivingDistanceStatus(DrivingDistanceStatus.ELIGIBLE)
+                .drivingDistanceDestinationLat(23.075611)
+                .drivingDistanceDestinationLng(76.850082)
                 .totalAmount(BigDecimal.TEN)
                 .status(OrderStatus.PLACED)
                 .items(new ArrayList<>())

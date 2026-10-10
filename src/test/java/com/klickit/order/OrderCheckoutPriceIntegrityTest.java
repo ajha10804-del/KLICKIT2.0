@@ -77,6 +77,9 @@ public class OrderCheckoutPriceIntegrityTest {
         cart.addItem(cartItem);
 
         checkoutRequest = new CheckoutRequest("sess_1", "Test", "123", "Addr", null);
+
+        org.mockito.Mockito.lenient().when(productRepository.decrementStockIfAvailable(any(UUID.class), any(int.class)))
+                .thenReturn(1);
     }
 
     @Test

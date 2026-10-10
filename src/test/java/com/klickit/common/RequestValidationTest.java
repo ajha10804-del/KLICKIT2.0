@@ -42,6 +42,23 @@ class RequestValidationTest {
     }
 
     @Test
+    @DisplayName("CheckoutRequest allows null customer address for map-first checkouts")
+    void checkoutRequest_nullAddress_passesValidation() {
+        CheckoutRequest request = new CheckoutRequest(
+                "sess_abc123",
+                "Rahul Sharma",
+                "+919876543210",
+                null,
+                23.0753,
+                76.8606,
+                "Near Main Gate"
+        );
+
+        Set<ConstraintViolation<CheckoutRequest>> violations = validator.validate(request);
+        assertThat(violations).isEmpty();
+    }
+
+    @Test
     @DisplayName("CheckoutRequest rejects customer name exceeding 100 characters")
     void checkoutRequest_nameExceeds100_rejected() {
         String longName = "A".repeat(101);

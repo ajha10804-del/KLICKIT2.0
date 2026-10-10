@@ -78,12 +78,23 @@ class OrderAuthorizationSecurityTest {
     @DisplayName("ADMIN accessing admin orders endpoint returns 200 OK")
     void adminUser_adminOrders_returns200() throws Exception {
         OrderResponse order = createSampleOrder(UUID.randomUUID(), "customerA@test.com");
-        when(orderService.getAllOrders()).thenReturn(List.of(order));
+        com.klickit.common.dto.PagedResponse<OrderResponse> pagedResponse = com.klickit.common.dto.PagedResponse.<OrderResponse>builder()
+                .content(List.of(order))
+                .page(0)
+                .size(20)
+                .totalElements(1)
+                .totalPages(1)
+                .last(true)
+                .build();
+        when(orderService.getAdminOrdersPaged(org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.eq(0), org.mockito.ArgumentMatchers.eq(20)))
+                .thenReturn(pagedResponse);
 
         mockMvc.perform(get("/admin/orders"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data[0].customerName").value("Sample Customer"));
+                .andExpect(jsonPath("$.data.content[0].customerName").value("Sample Customer"))
+                .andExpect(jsonPath("$.data.page").value(0))
+                .andExpect(jsonPath("$.data.totalElements").value(1));
     }
 
     @Test

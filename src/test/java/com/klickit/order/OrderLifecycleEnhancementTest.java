@@ -70,6 +70,9 @@ public class OrderLifecycleEnhancementTest {
     @Mock
     private PasswordEncoder passwordEncoder;
 
+    @Mock
+    private com.klickit.order.routing.DrivingDistanceService drivingDistanceService;
+
     @InjectMocks
     private OrderService orderService;
 
@@ -78,6 +81,12 @@ public class OrderLifecycleEnhancementTest {
     @BeforeEach
     void setUp() {
         deliveryService = new DeliveryService(deliveryPartnerRepository, orderRepository, userRepository, passwordEncoder);
+        org.mockito.Mockito.lenient().when(productRepository.decrementStockIfAvailable(any(UUID.class), any(int.class)))
+                .thenReturn(1);
+        org.mockito.Mockito.lenient().when(productRepository.incrementStock(any(UUID.class), any(int.class)))
+                .thenReturn(1);
+        org.mockito.Mockito.lenient().when(drivingDistanceService.calculateDistance(any(double.class), any(double.class), any(double.class), any(double.class)))
+                .thenReturn(com.klickit.order.routing.DrivingDistanceResult.eligible(3500));
     }
 
     @AfterEach
@@ -99,6 +108,12 @@ public class OrderLifecycleEnhancementTest {
                 .customerName("Customer A")
                 .customerPhone("9876543210")
                 .customerAddress("Room 101, Campus Hostel")
+                .customerLatitude(23.075611)
+                .customerLongitude(76.850082)
+                .drivingDistanceMeters(3500)
+                .drivingDistanceStatus(com.klickit.order.entity.DrivingDistanceStatus.ELIGIBLE)
+                .drivingDistanceDestinationLat(23.075611)
+                .drivingDistanceDestinationLng(76.850082)
                 .customerEmail(customerEmail)
                 .totalAmount(new BigDecimal("120.00"))
                 .deliveryFee(new BigDecimal("25.00"))
