@@ -6,6 +6,7 @@ import DeliveryDashboard from './admin and deliverydashboard/DeliveryDashboard.j
 import LocationPicker from './src/components/LocationPicker.jsx';
 import CustomerTrackingMap from './src/components/CustomerTrackingMap.jsx';
 import OtpLoginForm from './src/components/OtpLoginForm.jsx';
+import AuthScreen from './src/components/AuthScreen.jsx';
 
 const API = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 const categories = [
@@ -47,6 +48,18 @@ function isTokenExpired(token) {
     return Date.now() >= payload.exp * 1000;
   } catch {
     return true;
+  }
+}
+
+function getRoleFromToken(token) {
+  if (!token) return null;
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+    return payload.role || null;
+  } catch {
+    return null;
   }
 }
 
@@ -191,7 +204,8 @@ function App() {
   const [phonePromptError, setPhonePromptError] = useState('');
   const [phonePromptLoading, setPhonePromptLoading] = useState(false);
 
-  const authToken = (typeof localStorage !== 'undefined' ? localStorage.getItem('klickit_token') : '') || '';
+  const [authToken, setAuthToken] = useState(() => (typeof localStorage !== 'undefined' ? localStorage.getItem('klickit_token') : '') || '');
+  const isAuthValid = Boolean(user && authToken && !isTokenExpired(authToken));
 
   // Client-side router navigation
   useEffect(() => {
@@ -253,12 +267,37 @@ function App() {
   function handleAuthFailure(msg = 'Session expired. Please sign in again.') {
     localStorage.removeItem('klickit_token');
     localStorage.removeItem('klickit_user');
+    setAuthToken('');
     setUser(null);
     setAccountOpen(false);
     setCartOpen(false);
-    setAuthMode('otp');
-    setAuthOpen(true);
+    setAuthOpen(false);
     notify(msg);
+  }
+
+  function handleAuthSuccess(profile, token) {
+    if (token) {
+      localStorage.setItem('klickit_token', token);
+      setAuthToken(token);
+    }
+    const authoritativeRole = (token ? getRoleFromToken(token) : null) || profile.role || 'CUSTOMER';
+    const cleanProfile = {
+      ...profile,
+      role: authoritativeRole
+    };
+    localStorage.setItem('klickit_user', JSON.stringify(cleanProfile));
+    setUser(cleanProfile);
+    setAuthOpen(false);
+    notify(`Welcome${cleanProfile.name ? `, ${cleanProfile.name}` : ''}!`);
+
+    // Automatic role-based routing redirection
+    if (authoritativeRole === 'ADMIN') {
+      navigate('/admin');
+    } else if (authoritativeRole === 'DELIVERY_PARTNER') {
+      navigate('/delivery');
+    } else {
+      navigate('/');
+    }
   }
 
   async function fetchOrderHistory() {
@@ -312,13 +351,12 @@ function App() {
   function handleSignOut() {
     localStorage.removeItem('klickit_token');
     localStorage.removeItem('klickit_user');
+    setAuthToken('');
     setUser(null);
     setAccountOpen(false);
     setEditingPhone(false);
     notify('Signed out successfully.');
-    if (currentPath === '/admin' || currentPath === '/delivery') {
-      navigate('/');
-    }
+    navigate('/');
   }
 
   async function fetchOrder(orderId) {
@@ -403,11 +441,34 @@ function App() {
 
   async function submitAuth(e) {
     e.preventDefault(); setLoading(true);
-    const endpoint = authMode === 'login' ? '/api/auth/login' : '/api/auth/register';
     const normalizedEmail = authForm.email.trim().toLowerCase();
-    const payload = authMode === 'login'
-      ? { email: normalizedEmail, password: authForm.password }
-      : { name: authForm.name.trim(), email: normalizedEmail, password: authForm.password, phone: authForm.phone ? authForm.phone.trim() : '' };
+
+    if (authMode === 'register') {
+      try {
+        const cleanName = authForm.name.trim();
+        const cleanPhone = authForm.phone ? authForm.phone.trim() : '';
+        const cleanPass = authForm.password;
+        const res = await fetch(`${API}/api/auth/register/request-otp`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: cleanName, email: normalizedEmail, phone: cleanPhone, password: cleanPass })
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(body.message || body.error || 'Failed to send verification code. Please check your details.');
+        }
+        notify(`Verification code sent to ${normalizedEmail}. Please enter the code below.`);
+        setAuthMode('otp');
+      } catch (err) {
+        notify(err.message === 'Failed to fetch' ? 'Could not connect to the server.' : err.message);
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    const endpoint = '/api/auth/login';
+    const payload = { email: normalizedEmail, password: authForm.password };
     try {
       const res = await fetch(`${API}${endpoint}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       const body = await res.json().catch(() => ({}));
@@ -421,7 +482,6 @@ function App() {
         throw new Error(body.message || body.error || 'Please check your details and try again.');
       }
       const token = body.token || body.accessToken || body.data?.token;
-      if (token) localStorage.setItem('klickit_token', token);
       const resUser = body.user || body.data?.user || body.data;
       const profile = {
         name: resUser?.name || authForm.name || authForm.email.split('@')[0],
@@ -429,17 +489,7 @@ function App() {
         phone: resUser?.phone || authForm.phone || '',
         role: resUser?.role || 'CUSTOMER'
       };
-      localStorage.setItem('klickit_user', JSON.stringify(profile));
-      setUser(profile);
-      setAuthOpen(false);
-      notify(`Welcome${profile.name ? `, ${profile.name}` : ''}!`);
-
-      // Automatic role-based routing redirection
-      if (profile.role === 'ADMIN') {
-        navigate('/admin');
-      } else if (profile.role === 'DELIVERY_PARTNER') {
-        navigate('/delivery');
-      }
+      handleAuthSuccess(profile, token);
     } catch (err) {
       notify(err.message === 'Failed to fetch' ? 'Could not connect to the server. Check that your backend is running.' : err.message);
     }
@@ -895,6 +945,20 @@ function App() {
     );
   }
 
+  // Unauthenticated visitors: Dedicated authentication screen as initial view before storefront
+  if (!isAuthValid && currentPath !== '/admin' && !currentPath.startsWith('/admin/') && currentPath !== '/delivery' && !currentPath.startsWith('/delivery/')) {
+    return (
+      <>
+        <AuthScreen
+          apiBaseUrl={API}
+          onAuthSuccess={handleAuthSuccess}
+          notify={notify}
+        />
+        {toast && <div className="toast"><span>✦</span>{toast}</div>}
+      </>
+    );
+  }
+
   // DEFAULT ROUTE: Customer Storefront (Friend's visual design 100% preserved)
   return <div className="app-shell">
     <div className="announcement"><span>✦</span> Your everyday essentials, delivered in minutes <span className="announcement-right">Fresh finds. Happy prices. <b>♡</b></span></div>
@@ -1018,16 +1082,7 @@ function App() {
               <p>We'll send a 6-digit verification code to your email.</p>
               <OtpLoginForm
                 onSuccess={(token, profile) => {
-                  localStorage.setItem('klickit_token', token);
-                  localStorage.setItem('klickit_user', JSON.stringify(profile));
-                  setUser(profile);
-                  setAuthOpen(false);
-                  notify(`Welcome${profile.name ? `, ${profile.name}` : ''}!`);
-                  if (profile.role === 'ADMIN') {
-                    navigate('/admin');
-                  } else if (profile.role === 'DELIVERY_PARTNER') {
-                    navigate('/delivery');
-                  }
+                  handleAuthSuccess(profile, token);
                 }}
                 onSwitchToPassword={() => setAuthMode('login')}
                 onSwitchToRegister={() => setAuthMode('register')}
@@ -1040,23 +1095,6 @@ function App() {
             <>
               <h2>Welcome back!</h2>
               <p>Sign in to pick up right where you left off.</p>
-              <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
-                <span style={{ fontSize: '11px', color: '#6b7280' }}>Quick fill:</span>
-                <button
-                  type="button"
-                  onClick={() => setAuthForm({ ...authForm, email: 'admin@klickit.test', password: 'CustomerPassword123!' })}
-                  style={{ fontSize: '11px', padding: '4px 10px', background: '#eaf7ec', color: '#0c831f', border: '1px solid #bbf7d0', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}
-                >
-                  ⚙ Admin Demo
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAuthForm({ ...authForm, email: 'driver1@klickit.test', password: 'CustomerPassword123!' })}
-                  style={{ fontSize: '11px', padding: '4px 10px', background: '#ede9fe', color: '#6d28d9', border: '1px solid #ddd6fe', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}
-                >
-                  🚴 Driver Demo
-                </button>
-              </div>
               <form onSubmit={submitAuth}>
                 <input
                   required

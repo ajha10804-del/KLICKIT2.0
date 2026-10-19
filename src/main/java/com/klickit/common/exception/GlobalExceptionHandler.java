@@ -70,6 +70,13 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error("Invalid email or password"));
     }
 
+    @ExceptionHandler(org.springframework.security.authentication.DisabledException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDisabled(org.springframework.security.authentication.DisabledException ex) {
+        return ResponseEntity
+                .status(HttpStatus.UNAUTHORIZED)
+                .body(ApiResponse.error("Account is disabled. Please contact support."));
+    }
+
     @ExceptionHandler(InvalidOtpException.class)
     public ResponseEntity<ApiResponse<Void>> handleInvalidOtp(InvalidOtpException ex) {
         return ResponseEntity

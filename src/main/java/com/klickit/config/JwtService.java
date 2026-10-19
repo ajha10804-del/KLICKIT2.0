@@ -51,13 +51,26 @@ public class JwtService {
         return claimsResolver.apply(claims);
     }
 
+    public String extractRole(String token) {
+        return extractClaim(token, claims -> claims.get("role", String.class));
+    }
+
     public String generateToken(UserDetails userDetails) {
         return generateToken(new HashMap<>(), userDetails);
     }
 
     public String generateToken(Map<String, Object> extraClaims, UserDetails userDetails) {
+        Map<String, Object> claims = new HashMap<>(extraClaims);
+        if (!claims.containsKey("role") && userDetails != null) {
+            if (userDetails instanceof com.klickit.user.entity.User user && user.getRole() != null) {
+                claims.put("role", user.getRole().name());
+            } else if (userDetails.getAuthorities() != null && !userDetails.getAuthorities().isEmpty()) {
+                String auth = userDetails.getAuthorities().iterator().next().getAuthority();
+                claims.put("role", auth.startsWith("ROLE_") ? auth.substring(5) : auth);
+            }
+        }
         return Jwts.builder()
-                .claims(extraClaims)
+                .claims(claims)
                 .subject(userDetails.getUsername())
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + expirationMs))

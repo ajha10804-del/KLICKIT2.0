@@ -59,4 +59,25 @@ class JwtServiceKeyValidationTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("JWT_SECRET must be configured");
     }
+
+    @Test
+    @DisplayName("generateToken includes role claim and extractRole extracts it")
+    void generateToken_includesRoleClaim() {
+        JwtService service = new JwtService();
+        String validKey = Base64.getEncoder().encodeToString(
+                "this-is-a-32-byte-secret-key-12345678".getBytes()
+        );
+        ReflectionTestUtils.setField(service, "secretKey", validKey);
+        ReflectionTestUtils.setField(service, "expirationMs", 3600000L);
+
+        com.klickit.user.entity.User user = com.klickit.user.entity.User.builder()
+                .email("admin@klickit.com")
+                .role(com.klickit.user.entity.Role.ADMIN)
+                .build();
+
+        String token = service.generateToken(user);
+        org.assertj.core.api.Assertions.assertThat(token).isNotBlank();
+        org.assertj.core.api.Assertions.assertThat(service.extractUsername(token)).isEqualTo("admin@klickit.com");
+        org.assertj.core.api.Assertions.assertThat(service.extractRole(token)).isEqualTo("ADMIN");
+    }
 }

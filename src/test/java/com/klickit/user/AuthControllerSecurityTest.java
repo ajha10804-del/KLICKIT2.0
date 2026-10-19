@@ -23,6 +23,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -45,18 +46,8 @@ class AuthControllerSecurityTest {
     private JwtService jwtService;
 
     @Test
-    @DisplayName("POST /auth/register without role in JSON payload succeeds with role CUSTOMER")
-    void register_withoutRoleInJson_succeedsAsCustomer() throws Exception {
-        AuthResponse response = AuthResponse.builder()
-                .token("jwt-token")
-                .userId(UUID.randomUUID())
-                .name("Alice")
-                .email("alice@test.com")
-                .role(Role.CUSTOMER)
-                .build();
-
-        when(userService.register(any(RegisterRequest.class))).thenReturn(response);
-
+    @DisplayName("POST /auth/register rejects direct registration without OTP verification (400 Bad Request)")
+    void register_directUnverified_isRejected() throws Exception {
         String json = """
                 {
                     "name": "Alice",
@@ -69,24 +60,14 @@ class AuthControllerSecurityTest {
         mockMvc.perform(post("/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.role").value("CUSTOMER"));
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message").value("Direct registration without email verification is disabled. Please verify your email via /auth/register/request-otp."));
     }
 
     @Test
-    @DisplayName("POST /auth/register with role=ADMIN in JSON payload returns role CUSTOMER")
-    void register_withRoleAdminInJson_returnsRoleCustomer() throws Exception {
-        AuthResponse response = AuthResponse.builder()
-                .token("jwt-token")
-                .userId(UUID.randomUUID())
-                .name("Jay")
-                .email("jay@test.com")
-                .role(Role.CUSTOMER)
-                .build();
-
-        when(userService.register(any(RegisterRequest.class))).thenReturn(response);
-
+    @DisplayName("POST /auth/register with role=ADMIN is rejected and cannot bypass email verification")
+    void register_withRoleAdminInJson_isRejected() throws Exception {
         String json = """
                 {
                     "name": "Jay",
@@ -100,8 +81,63 @@ class AuthControllerSecurityTest {
         mockMvc.perform(post("/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message").value("Direct registration without email verification is disabled. Please verify your email via /auth/register/request-otp."));
+    }
+
+    @Test
+    @DisplayName("POST /auth/register/request-otp succeeds with 200 OK")
+    void requestRegistrationOtp_succeeds() throws Exception {
+        String json = """
+                {
+                    "name": "Sarah",
+                    "email": "sarah@test.com",
+                    "phone": "9876543210",
+                    "password": "password123"
+                }
+                """;
+
+        mockMvc.perform(post("/auth/register/request-otp")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").value("Verification code sent to your email"));
+
+        verify(userService).requestRegistrationOtp(any());
+    }
+
+    @Test
+    @DisplayName("POST /auth/register/verify-otp succeeds with 201 CREATED and CUSTOMER role")
+    void verifyRegistrationOtp_succeeds() throws Exception {
+        AuthResponse response = AuthResponse.builder()
+                .token("jwt-token-verified")
+                .userId(UUID.randomUUID())
+                .name("Sarah")
+                .email("sarah@test.com")
+                .role(Role.CUSTOMER)
+                .build();
+
+        when(userService.verifyRegistrationOtp(any())).thenReturn(response);
+
+        String json = """
+                {
+                    "name": "Sarah",
+                    "email": "sarah@test.com",
+                    "phone": "9876543210",
+                    "password": "password123",
+                    "code": "123456",
+                    "role": "ADMIN"
+                }
+                """;
+
+        mockMvc.perform(post("/auth/register/verify-otp")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.role").value("CUSTOMER"));
+                .andExpect(jsonPath("$.data.role").value("CUSTOMER"))
+                .andExpect(jsonPath("$.data.token").value("jwt-token-verified"));
     }
 }

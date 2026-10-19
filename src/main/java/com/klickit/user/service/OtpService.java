@@ -147,7 +147,7 @@ public class OtpService {
     }
 
     @Transactional(noRollbackFor = InvalidOtpException.class)
-    public AuthResponse verifyOtp(String email, String code) {
+    public void verifyAndConsumeOtp(String email, String code) {
         String normalizedEmail = email != null ? email.toLowerCase().trim() : "";
         if (normalizedEmail.isBlank() || code == null || code.isBlank()) {
             throw new InvalidOtpException("Invalid or expired code");
@@ -189,10 +189,20 @@ public class OtpService {
         otp.setConsumedAt(now);
         otp.setUpdatedAt(now);
         otpCodeRepository.save(otp);
+    }
+
+    @Transactional(noRollbackFor = InvalidOtpException.class)
+    public AuthResponse verifyOtp(String email, String code) {
+        String normalizedEmail = email != null ? email.toLowerCase().trim() : "";
+        verifyAndConsumeOtp(normalizedEmail, code);
 
         // Resolve user or auto-provision CUSTOMER
         User user = userRepository.findByEmail(normalizedEmail)
                 .orElseGet(() -> provisionCustomer(normalizedEmail));
+
+        if (!user.isEnabled()) {
+            throw new org.springframework.security.authentication.DisabledException("Account is disabled. Please contact support.");
+        }
 
         String token = jwtService.generateToken(user);
 

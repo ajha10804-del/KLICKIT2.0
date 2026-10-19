@@ -45,9 +45,55 @@ export default function LocationPicker({
   const [geoAccuracy, setGeoAccuracy] = useState(null);
   const [formError, setFormError] = useState(null);
 
+  const [reverseGeocoding, setReverseGeocoding] = useState(false);
+  const activeGeocodeAbort = useRef(null);
   const mapContainerRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markerRef = useRef(null);
+
+  // Asynchronous reverse geocoding with 4-second bounded timeout
+  const reverseGeocode = async (lat, lng) => {
+    if (activeGeocodeAbort.current) {
+      activeGeocodeAbort.current.abort();
+    }
+    const controller = new AbortController();
+    activeGeocodeAbort.current = controller;
+    setReverseGeocoding(true);
+
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
+
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
+        {
+          signal: controller.signal,
+          headers: { Accept: 'application/json' }
+        }
+      );
+      clearTimeout(timeoutId);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.display_name) {
+          const addr = data.address || {};
+          const parts = [
+            addr.building || addr.amenity || addr.road,
+            addr.neighbourhood || addr.suburb || addr.residential,
+            addr.city || addr.town || addr.village || addr.county,
+            addr.state,
+            addr.postcode
+          ].filter(Boolean);
+          const formatted = parts.length > 0 ? Array.from(new Set(parts)).join(', ') : data.display_name;
+          // Only auto-fill if user has not manually customized the text
+          setAddress(prev => (prev.trim() && !prev.startsWith('Pinned Location') ? prev : formatted));
+        }
+      }
+    } catch {
+      // Graceful fallback: coordinates remain authoritative, user can enter manual address
+    } finally {
+      clearTimeout(timeoutId);
+      setReverseGeocoding(false);
+    }
+  };
 
   // Initialize Leaflet Map
   useEffect(() => {
@@ -68,32 +114,54 @@ export default function LocationPicker({
     }).addTo(map);
 
     const pinIcon = createCustomPinIcon();
-    const marker = L.marker([startLat, startLng], {
-      draggable: true,
-      icon: pinIcon
-    }).addTo(map);
+    let marker = null;
 
-    // Initial default coordinates
-    if (!initialCoordinates) {
-      setCoordinates({ latitude: startLat, longitude: startLng });
+    if (initialCoordinates) {
+      marker = L.marker([startLat, startLng], {
+        draggable: true,
+        icon: pinIcon
+      }).addTo(map);
     }
 
-    // Marker drag updates coordinates
-    marker.on('dragend', () => {
-      const pos = marker.getLatLng();
-      setCoordinates({ latitude: pos.lat, longitude: pos.lng });
+    const updatePosition = (latlng, triggerGeocode = true) => {
+      const lat = latlng.lat;
+      const lng = latlng.lng;
+      setCoordinates({ latitude: lat, longitude: lng });
       setFormError(null);
-    });
 
-    // Clicking map also places the marker
+      if (!marker) {
+        marker = L.marker([lat, lng], {
+          draggable: true,
+          icon: pinIcon
+        }).addTo(map);
+        marker.on('dragend', () => {
+          const pos = marker.getLatLng();
+          updatePosition(pos, true);
+        });
+        markerRef.current = marker;
+      } else {
+        marker.setLatLng([lat, lng]);
+      }
+
+      if (triggerGeocode) {
+        reverseGeocode(lat, lng);
+      }
+    };
+
+    if (marker) {
+      marker.on('dragend', () => {
+        const pos = marker.getLatLng();
+        updatePosition(pos, true);
+      });
+      markerRef.current = marker;
+    }
+
+    // Clicking map places or moves the marker
     map.on('click', (e) => {
-      marker.setLatLng(e.latlng);
-      setCoordinates({ latitude: e.latlng.lat, longitude: e.latlng.lng });
-      setFormError(null);
+      updatePosition(e.latlng, true);
     });
 
     mapInstanceRef.current = map;
-    markerRef.current = marker;
 
     // Recalculate dimensions once modal is rendered
     const timer1 = setTimeout(() => {
@@ -111,6 +179,9 @@ export default function LocationPicker({
     return () => {
       clearTimeout(timer1);
       clearTimeout(timer2);
+      if (activeGeocodeAbort.current) {
+        activeGeocodeAbort.current.abort();
+      }
       map.remove();
       mapInstanceRef.current = null;
       markerRef.current = null;
@@ -119,8 +190,15 @@ export default function LocationPicker({
 
   // Browser Geolocation trigger
   const handleUseCurrentLocation = () => {
+    if (geoLoading) return; // Prevent duplicate concurrent requests
+
     if (!navigator.geolocation) {
       setGeoError('Geolocation is not supported by your browser.');
+      return;
+    }
+
+    if (window.isSecureContext === false) {
+      setGeoError('Browser geolocation requires a secure HTTPS connection. Please tap on the map to set your pin.');
       return;
     }
 
@@ -137,45 +215,64 @@ export default function LocationPicker({
         setGeoAccuracy(accuracy);
         setFormError(null);
 
-        // Accuracy warning
-        if (accuracy > 100) {
+        // Accuracy warning if > 150m
+        if (accuracy > 150) {
           setGeoWarning(
-            `Your location may not be precise (~${Math.round(accuracy)}m). Please adjust the pin on the map or move outdoors.`
+            `Your location may not be precise (~${Math.round(accuracy)}m). Adjust the pin on the map if needed.`
           );
         } else {
           setGeoWarning(null);
         }
 
-        // Center map, move marker, and recalculate Leaflet tiles
-        if (mapInstanceRef.current && markerRef.current) {
+        // Center map and place marker
+        if (mapInstanceRef.current) {
           mapInstanceRef.current.setView([latitude, longitude], 16);
-          markerRef.current.setLatLng([latitude, longitude]);
+          if (!markerRef.current) {
+            const pinIcon = createCustomPinIcon();
+            const marker = L.marker([latitude, longitude], {
+              draggable: true,
+              icon: pinIcon
+            }).addTo(mapInstanceRef.current);
+            marker.on('dragend', () => {
+              const pos = marker.getLatLng();
+              setCoordinates({ latitude: pos.lat, longitude: pos.lng });
+              setFormError(null);
+              reverseGeocode(pos.lat, pos.lng);
+            });
+            markerRef.current = marker;
+          } else {
+            markerRef.current.setLatLng([latitude, longitude]);
+          }
+
           setTimeout(() => {
             if (mapInstanceRef.current) {
               mapInstanceRef.current.invalidateSize();
             }
           }, 150);
         }
+
+        // Asynchronously reverse geocode without blocking
+        reverseGeocode(latitude, longitude);
       },
       (error) => {
         setGeoLoading(false);
         if (error.code === 1) {
           // PERMISSION_DENIED
           setGeoError(
-            'Location permission was denied. You can manually place the pin on the map.'
+            'Location permission was denied. Please allow location access or tap on the map to set your pin.'
           );
         } else if (error.code === 3) {
           // TIMEOUT
-          setGeoError('Location request timed out. You can manually place the pin on the map.');
+          setGeoError('Location request timed out. Please tap on the map to place your pin or try again.');
         } else {
           // POSITION_UNAVAILABLE
-          setGeoError('Unable to determine location. You can manually place the pin on the map.');
+          setGeoError('Unable to determine current position. Please tap on the map to place your pin.');
         }
       },
       {
         enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 0
+        timeout: 8000,
+        maximumAge: 60000
       }
     );
   };
@@ -185,7 +282,7 @@ export default function LocationPicker({
 
     // Coordinates are authoritative
     if (!coordinates || typeof coordinates.latitude !== 'number' || typeof coordinates.longitude !== 'number') {
-      setFormError('Please select your delivery location using the map or "Use My Current Location".');
+      setFormError('Please select your delivery location using the map or "Use my current location".');
       return;
     }
 
@@ -432,14 +529,17 @@ export default function LocationPicker({
           <div>
             <label
               style={{
-                display: 'block',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
                 fontSize: '12px',
                 fontWeight: 700,
                 color: '#334155',
                 marginBottom: '5px'
               }}
             >
-              Address / Area / Flat / Hostel
+              <span>Address / Area / Flat / Hostel</span>
+              {reverseGeocoding && <span style={{ fontSize: '11px', color: '#16a34a', fontWeight: 500 }}>Fetching address details…</span>}
             </label>
             <input
               type="text"

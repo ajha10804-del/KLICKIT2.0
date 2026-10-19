@@ -53,85 +53,29 @@ class RegistrationSecurityTest {
     }
 
     @Test
-    @DisplayName("Register without role field defaults to CUSTOMER")
-    void register_withoutRole_assignsCustomer() {
+    @DisplayName("Calling legacy register throws IllegalStateException to enforce OTP email verification")
+    void register_directUnverified_throwsIllegalStateException() {
         RegisterRequest request = new RegisterRequest();
         request.setName("Alice");
         request.setEmail("alice@test.com");
         request.setPhone("1111111111");
         request.setPassword("password123");
-        request.setRole(null);
 
-        when(userRepository.existsByEmail("alice@test.com")).thenReturn(false);
-        when(userRepository.existsByPhone("1111111111")).thenReturn(false);
-        when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
-            User user = invocation.getArgument(0);
-            user.setId(UUID.randomUUID());
-            return user;
-        });
-
-        AuthResponse response = userService.register(request);
-
-        ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
-        verify(userRepository).save(userCaptor.capture());
-
-        assertThat(userCaptor.getValue().getRole()).isEqualTo(Role.CUSTOMER);
-        assertThat(response.getRole()).isEqualTo(Role.CUSTOMER);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> userService.register(request))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Direct registration without email verification is disabled");
     }
 
     @Test
-    @DisplayName("Register with role=ADMIN is forced to CUSTOMER (prevents privilege escalation)")
-    void register_withRoleAdmin_forcesCustomer() {
-        RegisterRequest request = new RegisterRequest();
-        request.setName("Jay");
-        request.setEmail("jay@test.com");
-        request.setPhone("2222222222");
-        request.setPassword("password123");
-        request.setRole(Role.ADMIN);
+    @DisplayName("Deactivated user (enabled = false) fails authentication with DisabledException")
+    void deactivatedUser_failsLogin() {
+        when(authenticationManager.authenticate(any(UsernamePasswordAuthenticationToken.class)))
+                .thenThrow(new org.springframework.security.authentication.DisabledException("User is disabled"));
 
-        when(userRepository.existsByEmail("jay@test.com")).thenReturn(false);
-        when(userRepository.existsByPhone("2222222222")).thenReturn(false);
-        when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
-            User user = invocation.getArgument(0);
-            user.setId(UUID.randomUUID());
-            return user;
-        });
-
-        AuthResponse response = userService.register(request);
-
-        ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
-        verify(userRepository).save(userCaptor.capture());
-
-        // Verifies the persisted entity role is CUSTOMER, never ADMIN
-        assertThat(userCaptor.getValue().getRole()).isEqualTo(Role.CUSTOMER);
-        assertThat(response.getRole()).isEqualTo(Role.CUSTOMER);
-    }
-
-    @Test
-    @DisplayName("Register with role=DELIVERY_PARTNER is forced to CUSTOMER")
-    void register_withRoleDeliveryPartner_forcesCustomer() {
-        RegisterRequest request = new RegisterRequest();
-        request.setName("Bob");
-        request.setEmail("bob@test.com");
-        request.setPhone("3333333333");
-        request.setPassword("password123");
-        request.setRole(Role.DELIVERY_PARTNER);
-
-        when(userRepository.existsByEmail("bob@test.com")).thenReturn(false);
-        when(userRepository.existsByPhone("3333333333")).thenReturn(false);
-        when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
-            User user = invocation.getArgument(0);
-            user.setId(UUID.randomUUID());
-            return user;
-        });
-
-        AuthResponse response = userService.register(request);
-
-        ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
-        verify(userRepository).save(userCaptor.capture());
-
-        assertThat(userCaptor.getValue().getRole()).isEqualTo(Role.CUSTOMER);
-        assertThat(response.getRole()).isEqualTo(Role.CUSTOMER);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                userService.login(new LoginRequest("disabled@klickit.com", "pass123")))
+                .isInstanceOf(org.springframework.security.authentication.DisabledException.class)
+                .hasMessageContaining("User is disabled");
     }
 
     @Test

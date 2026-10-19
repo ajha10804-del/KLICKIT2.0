@@ -11,6 +11,10 @@ import com.klickit.user.entity.Role;
 import com.klickit.user.entity.User;
 import com.klickit.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import com.klickit.user.dto.RegistrationOtpRequest;
+import com.klickit.user.dto.RegistrationVerifyRequest;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -21,13 +25,35 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-@RequiredArgsConstructor
 public class UserService implements UserDetailsService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
+    private final OtpService otpService;
+
+    @Autowired
+    public UserService(
+            UserRepository userRepository,
+            PasswordEncoder passwordEncoder,
+            JwtService jwtService,
+            AuthenticationManager authenticationManager,
+            @Lazy OtpService otpService) {
+        this.userRepository = userRepository;
+        this.passwordEncoder = passwordEncoder;
+        this.jwtService = jwtService;
+        this.authenticationManager = authenticationManager;
+        this.otpService = otpService;
+    }
+
+    public UserService(
+            UserRepository userRepository,
+            PasswordEncoder passwordEncoder,
+            JwtService jwtService,
+            AuthenticationManager authenticationManager) {
+        this(userRepository, passwordEncoder, jwtService, authenticationManager, null);
+    }
 
     @Override
     public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
@@ -39,22 +65,55 @@ public class UserService implements UserDetailsService {
 
     @Transactional
     public AuthResponse register(RegisterRequest request) {
+        throw new IllegalStateException("Direct registration without email verification is disabled. Please verify your email via /auth/register/request-otp.");
+    }
+
+    public void requestRegistrationOtp(RegistrationOtpRequest request) {
+        String normalizedEmail = request.getEmail() != null ? request.getEmail().trim().toLowerCase() : "";
+        String trimmedPhone = request.getPhone() != null ? request.getPhone().trim() : "";
+
+        if (normalizedEmail.isBlank()) {
+            throw new IllegalArgumentException("Email cannot be empty");
+        }
+        if (userRepository.existsByEmail(normalizedEmail)) {
+            throw new IllegalStateException("An account with this email already exists");
+        }
+        if (!trimmedPhone.isBlank() && userRepository.existsByPhone(trimmedPhone)) {
+            throw new IllegalStateException("Phone number already registered to another account");
+        }
+        if (request.getPassword() == null || request.getPassword().length() < 6) {
+            throw new IllegalArgumentException("Password must be at least 6 characters");
+        }
+
+        if (otpService == null) {
+            throw new IllegalStateException("OTP service is currently unavailable");
+        }
+        otpService.requestOtp(normalizedEmail);
+    }
+
+    @Transactional
+    public AuthResponse verifyRegistrationOtp(RegistrationVerifyRequest request) {
         String normalizedEmail = request.getEmail() != null ? request.getEmail().trim().toLowerCase() : "";
         String trimmedPhone = request.getPhone() != null ? request.getPhone().trim() : null;
 
         if (userRepository.existsByEmail(normalizedEmail)) {
-            throw new IllegalStateException("Email already registered");
+            throw new IllegalStateException("An account with this email already exists");
         }
         if (trimmedPhone != null && !trimmedPhone.isEmpty() && userRepository.existsByPhone(trimmedPhone)) {
-            throw new IllegalStateException("Phone number already registered");
+            throw new IllegalStateException("Phone number already registered to another account");
         }
+
+        if (otpService == null) {
+            throw new IllegalStateException("OTP service is currently unavailable");
+        }
+        otpService.verifyAndConsumeOtp(normalizedEmail, request.getCode());
 
         User user = User.builder()
                 .name(request.getName().trim())
                 .email(normalizedEmail)
                 .phone(trimmedPhone)
                 .password(passwordEncoder.encode(request.getPassword()))
-                .role(Role.CUSTOMER)
+                .role(Role.CUSTOMER) // Strictly enforce CUSTOMER role (prevents escalation)
                 .build();
 
         User saved = userRepository.save(user);
