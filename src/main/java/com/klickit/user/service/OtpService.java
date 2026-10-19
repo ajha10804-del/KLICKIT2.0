@@ -138,7 +138,7 @@ public class OtpService {
                 } else {
                     log.error("Failed to send OTP login email to {}", normalizedEmail);
                     otpCodeRepository.delete(otp);
-                    return;
+                    throw new IllegalStateException("Failed to send sign-in code. Please try again later");
                 }
             } else if (devLogCode) {
                 log.info("[DEV ONLY] Login OTP code for {}: {}", normalizedEmail, code);

@@ -32,7 +32,7 @@ public class AdminBootstrapRunner implements ApplicationRunner {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.adminName = adminName;
-        this.adminEmail = adminEmail != null ? adminEmail.trim() : "";
+        this.adminEmail = adminEmail != null ? adminEmail.trim().toLowerCase() : "";
         this.adminPhone = adminPhone != null ? adminPhone.trim() : "";
         this.adminPassword = adminPassword != null ? adminPassword.trim() : "";
     }

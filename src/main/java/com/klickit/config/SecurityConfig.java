@@ -126,6 +126,9 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/tracking/*/location").hasRole("DELIVERY_PARTNER")
                         .requestMatchers(HttpMethod.GET, "/tracking/*").authenticated()
 
+                        // User profile endpoints
+                        .requestMatchers("/user/**").authenticated()
+
                         // Everything else requires authentication
                         .anyRequest().authenticated()
                 )

@@ -189,8 +189,17 @@ export default function LocationPicker({
       return;
     }
 
-    const trimmedAddress = address.trim();
+    let trimmedAddress = address.trim();
     const trimmedLandmark = landmark.trim();
+
+    // If no text address was typed, fallback sensibly so it does not leave address empty
+    if (!trimmedAddress) {
+      if (trimmedLandmark) {
+        trimmedAddress = trimmedLandmark;
+      } else if (coordinates) {
+        trimmedAddress = `Pinned Location (${coordinates.latitude.toFixed(4)}, ${coordinates.longitude.toFixed(4)})`;
+      }
+    }
 
     setFormError(null);
     onSave({
@@ -418,8 +427,40 @@ export default function LocationPicker({
           Drag the pin or tap anywhere on the map to place your delivery spot.
         </small>
 
-        {/* Additional Optional Details Form */}
+        {/* Additional Details Form */}
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div>
+            <label
+              style={{
+                display: 'block',
+                fontSize: '12px',
+                fontWeight: 700,
+                color: '#334155',
+                marginBottom: '5px'
+              }}
+            >
+              Address / Area / Flat / Hostel
+            </label>
+            <input
+              type="text"
+              value={address}
+              onChange={(e) => {
+                setAddress(e.target.value);
+                setFormError(null);
+              }}
+              placeholder="e.g. Block 3, Room 204 or Green Valley Apts"
+              style={{
+                width: '100%',
+                height: '42px',
+                border: '1px solid #cbd5e1',
+                borderRadius: '8px',
+                padding: '0 12px',
+                fontSize: '12px',
+                boxSizing: 'border-box'
+              }}
+            />
+          </div>
+
           <div>
             <label
               style={{

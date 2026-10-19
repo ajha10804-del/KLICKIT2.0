@@ -158,8 +158,10 @@ class OtpServiceTest {
         when(otpCodeRepository.countByEmailAndCreatedAtAfter(eq(TEST_EMAIL), any(Instant.class))).thenReturn(0L);
         when(emailService.sendLoginCode(eq(TEST_EMAIL), anyString(), eq(5L))).thenReturn(false);
 
-        // Should complete without throwing exception
-        otpService.requestOtp(TEST_EMAIL);
+        // Throws IllegalStateException to prevent misleading success response
+        assertThatThrownBy(() -> otpService.requestOtp(TEST_EMAIL))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Failed to send sign-in code");
 
         verify(otpCodeRepository).save(any(OtpCode.class));
         verify(otpCodeRepository).delete(any(OtpCode.class));

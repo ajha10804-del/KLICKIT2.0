@@ -36,11 +36,11 @@ public class DeliveryService {
 
     @Transactional
     public DeliveryPartnerResponse createPartner(CreateDeliveryPartnerRequest request) {
-        String trimmedEmail = request.getEmail() != null ? request.getEmail().trim() : "";
+        String trimmedEmail = request.getEmail() != null ? request.getEmail().trim().toLowerCase() : "";
         String trimmedPhone = request.getPhone() != null ? request.getPhone().trim() : "";
         String trimmedName = request.getName() != null ? request.getName().trim() : "";
 
-        if (userRepository.existsByEmail(trimmedEmail)) {
+        if (userRepository.existsByEmailIgnoreCase(trimmedEmail)) {
             throw new IllegalStateException("User email already exists");
         }
         if (userRepository.existsByPhone(trimmedPhone)) {

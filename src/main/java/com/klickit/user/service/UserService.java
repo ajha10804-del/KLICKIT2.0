@@ -1,9 +1,12 @@
 package com.klickit.user.service;
 
+import com.klickit.common.exception.ResourceNotFoundException;
 import com.klickit.config.JwtService;
 import com.klickit.user.dto.AuthResponse;
 import com.klickit.user.dto.LoginRequest;
 import com.klickit.user.dto.RegisterRequest;
+import com.klickit.user.dto.UpdateProfileRequest;
+import com.klickit.user.dto.UserProfileResponse;
 import com.klickit.user.entity.Role;
 import com.klickit.user.entity.User;
 import com.klickit.user.repository.UserRepository;
@@ -28,23 +31,28 @@ public class UserService implements UserDetailsService {
 
     @Override
     public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
-        return userRepository.findByEmail(email)
+        String normalizedEmail = email != null ? email.trim().toLowerCase() : "";
+        return userRepository.findByEmail(normalizedEmail)
+                .or(() -> userRepository.findByEmailIgnoreCase(normalizedEmail))
                 .orElseThrow(() -> new UsernameNotFoundException("User not found with email: " + email));
     }
 
     @Transactional
     public AuthResponse register(RegisterRequest request) {
-        if (userRepository.existsByEmail(request.getEmail())) {
+        String normalizedEmail = request.getEmail() != null ? request.getEmail().trim().toLowerCase() : "";
+        String trimmedPhone = request.getPhone() != null ? request.getPhone().trim() : null;
+
+        if (userRepository.existsByEmail(normalizedEmail)) {
             throw new IllegalStateException("Email already registered");
         }
-        if (userRepository.existsByPhone(request.getPhone())) {
+        if (trimmedPhone != null && !trimmedPhone.isEmpty() && userRepository.existsByPhone(trimmedPhone)) {
             throw new IllegalStateException("Phone number already registered");
         }
 
         User user = User.builder()
-                .name(request.getName())
-                .email(request.getEmail())
-                .phone(request.getPhone())
+                .name(request.getName().trim())
+                .email(normalizedEmail)
+                .phone(trimmedPhone)
                 .password(passwordEncoder.encode(request.getPassword()))
                 .role(Role.CUSTOMER)
                 .build();
@@ -63,12 +71,15 @@ public class UserService implements UserDetailsService {
     }
 
     public AuthResponse login(LoginRequest request) {
+        String normalizedEmail = request.getEmail() != null ? request.getEmail().trim().toLowerCase() : "";
+
         authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(
-                        request.getEmail(),
+                        normalizedEmail,
                         request.getPassword()));
 
-        User user = userRepository.findByEmail(request.getEmail())
+        User user = userRepository.findByEmail(normalizedEmail)
+                .or(() -> userRepository.findByEmailIgnoreCase(normalizedEmail))
                 .orElseThrow(() -> new UsernameNotFoundException("User not found"));
 
         String token = jwtService.generateToken(user);
@@ -80,6 +91,52 @@ public class UserService implements UserDetailsService {
                 .email(user.getEmail())
                 .phone(user.getPhone())
                 .role(user.getRole())
+                .build();
+    }
+
+    public UserProfileResponse getProfile(String email) {
+        String normalizedEmail = email != null ? email.trim().toLowerCase() : "";
+        User user = userRepository.findByEmail(normalizedEmail)
+                .or(() -> userRepository.findByEmailIgnoreCase(normalizedEmail))
+                .orElseThrow(() -> new ResourceNotFoundException("User", "email", normalizedEmail));
+
+        return UserProfileResponse.builder()
+                .id(user.getId())
+                .name(user.getName())
+                .email(user.getEmail())
+                .phone(user.getPhone())
+                .role(user.getRole())
+                .build();
+    }
+
+    @Transactional
+    public UserProfileResponse updateProfile(String email, UpdateProfileRequest request) {
+        String normalizedEmail = email != null ? email.trim().toLowerCase() : "";
+        User user = userRepository.findByEmail(normalizedEmail)
+                .or(() -> userRepository.findByEmailIgnoreCase(normalizedEmail))
+                .orElseThrow(() -> new ResourceNotFoundException("User", "email", normalizedEmail));
+
+        if (request.getName() != null && !request.getName().isBlank()) {
+            user.setName(request.getName().trim());
+        }
+
+        if (request.getPhone() != null) {
+            String trimmedPhone = request.getPhone().trim();
+            if (!trimmedPhone.isEmpty()) {
+                if (userRepository.existsByPhoneAndIdNot(trimmedPhone, user.getId())) {
+                    throw new IllegalStateException("Phone number already registered to another account");
+                }
+                user.setPhone(trimmedPhone);
+            }
+        }
+
+        User saved = userRepository.save(user);
+        return UserProfileResponse.builder()
+                .id(saved.getId())
+                .name(saved.getName())
+                .email(saved.getEmail())
+                .phone(saved.getPhone())
+                .role(saved.getRole())
                 .build();
     }
 }
