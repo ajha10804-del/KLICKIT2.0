@@ -110,7 +110,7 @@ public class HttpsTransactionalEmailClient implements TransactionalEmailClient {
     @Override
     public boolean sendEmail(String to, String subject, String htmlBody) {
         if (apiKey.isEmpty()) {
-            log.warn("Cannot dispatch transactional email to [{}]: MAIL_API_KEY is missing or empty. Skipping email notification.", to);
+            log.warn("Cannot dispatch transactional email: MAIL_API_KEY is missing or empty. Skipping email notification.");
             return false;
         }
 
@@ -122,25 +122,25 @@ public class HttpsTransactionalEmailClient implements TransactionalEmailClient {
         );
 
         // Attempt 1
-        boolean success = executePost(to, payload);
+        boolean success = executePost(payload);
         if (success) {
             return true;
         }
 
         // Retry once after ~1s delay
-        log.warn("Retrying transactional email delivery to [{}] after 1s delay...", to);
+        log.warn("Retrying transactional email delivery after 1s delay...");
         try {
             Thread.sleep(1000);
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
-            log.error("Interrupted during email retry backoff for [{}]", to);
+            log.error("Interrupted during email retry backoff: [type={}]", ie.getClass().getName());
             return false;
         }
 
-        return executePost(to, payload);
+        return executePost(payload);
     }
 
-    private boolean executePost(String to, Map<String, Object> payload) {
+    private boolean executePost(Map<String, Object> payload) {
         try {
             ResponseEntity<String> response = restClient.post()
                     .uri(apiUrl)
@@ -151,20 +151,18 @@ public class HttpsTransactionalEmailClient implements TransactionalEmailClient {
                     .toEntity(String.class);
 
             if (response.getStatusCode().is2xxSuccessful()) {
-                log.info("Transactional email successfully accepted by provider for recipient: [{}]", to);
+                log.info("Transactional email successfully accepted by provider.");
                 return true;
             } else {
-                log.error("Transactional email provider returned non-2xx status: [{}] for recipient: [{}]",
-                        response.getStatusCode(), to);
+                log.error("Transactional email provider returned non-2xx status: [{}]", response.getStatusCode());
                 return false;
             }
         } catch (HttpStatusCodeException ex) {
-            log.error("Transactional email provider rejected request for recipient: [{}]. Status: [{}]. Response: [{}]",
-                    to, ex.getStatusCode(), ex.getResponseBodyAsString());
+            log.error("Transactional email provider rejected request: [status={}] [type={}]",
+                    ex.getStatusCode(), ex.getClass().getName());
             return false;
         } catch (Exception ex) {
-            log.error("Transactional email delivery failed for recipient: [{}]. Error: [{}]",
-                    to, ex.getMessage());
+            log.error("Transactional email delivery failed: [type={}]", ex.getClass().getName());
             return false;
         }
     }

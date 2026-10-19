@@ -456,4 +456,173 @@ class OrderEmailNotificationTest {
         assertThat(result).isFalse();
         server.verify();
     }
+
+    // =========================================================================
+    // 7. Customer Order Confirmation Email Delivery & Safety
+    // =========================================================================
+
+    @Test
+    @DisplayName("OrderNotificationListener dispatches confirmation email to both admin and customer")
+    void handleOrderCreated_dualDispatch_dispatchesToBoth() {
+        Order order = buildSampleOrder();
+        when(emailClient.sendEmail(eq("admin@klickit.com"), anyString(), anyString())).thenReturn(true);
+        when(emailClient.sendEmail(eq("rahul@student.edu"), anyString(), anyString())).thenReturn(true);
+
+        OrderCreatedEvent event = new OrderCreatedEvent(order, order.getItems());
+        orderNotificationListener.handleOrderCreated(event);
+
+        verify(emailClient).sendEmail(eq("admin@klickit.com"), anyString(), anyString());
+        verify(emailClient).sendEmail(eq("rahul@student.edu"), anyString(), anyString());
+        verify(orderRepository).updateNotificationStatus(eq(testOrderId), eq(true));
+    }
+
+    @Test
+    @DisplayName("OrderNotificationListener isolates admin and customer delivery failures")
+    void handleOrderCreated_partialFailure_updatesStatusTrue() {
+        Order order = buildSampleOrder();
+        when(emailClient.sendEmail(eq("admin@klickit.com"), anyString(), anyString())).thenReturn(false);
+        when(emailClient.sendEmail(eq("rahul@student.edu"), anyString(), anyString())).thenReturn(true);
+
+        OrderCreatedEvent event = new OrderCreatedEvent(order, order.getItems());
+        orderNotificationListener.handleOrderCreated(event);
+
+        verify(emailClient).sendEmail(eq("admin@klickit.com"), anyString(), anyString());
+        verify(emailClient).sendEmail(eq("rahul@student.edu"), anyString(), anyString());
+        verify(orderRepository).updateNotificationStatus(eq(testOrderId), eq(true));
+    }
+
+    @Test
+    @DisplayName("EmailService.buildCustomerOrderEmailBody sanitizes user-controlled fields against stored XSS")
+    void buildCustomerOrderEmailBody_escapesXssPayloads() {
+        Order order = buildSampleOrder();
+        order.setCustomerName("<script>alert('xss')</script>");
+        order.setCustomerAddress("<img src=x onerror=alert(1)>");
+
+        OrderItem xssItem = OrderItem.builder()
+                .productName("<svg onload=alert(2)>")
+                .quantity(1)
+                .price(new BigDecimal("10.00"))
+                .build();
+
+        String body = emailService.buildCustomerOrderEmailBody(order, List.of(xssItem));
+
+        assertThat(body).doesNotContain("<script>");
+        assertThat(body).doesNotContain("<img src=x");
+        assertThat(body).doesNotContain("<svg onload");
+        assertThat(body).contains("&lt;script&gt;");
+        assertThat(body).contains("&lt;img src=x");
+        assertThat(body).contains("&lt;svg onload=alert(2)&gt;");
+    }
+
+    @Test
+    @DisplayName("sendOrderConfirmationToCustomer returns false and skips delivery if customer email is null or empty")
+    void sendOrderConfirmationToCustomer_skipsWhenEmailNullOrEmpty() {
+        Order order = buildSampleOrder();
+        order.setCustomerEmail(null);
+
+        boolean result = emailService.sendOrderConfirmationToCustomer(order);
+        assertThat(result).isFalse();
+
+        order.setCustomerEmail("   ");
+        boolean result2 = emailService.sendOrderConfirmationToCustomer(order);
+        assertThat(result2).isFalse();
+
+        verify(emailClient, never()).sendEmail(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("HttpsTransactionalEmailClient logs safe metadata without leaking recipient email or provider response body")
+    void httpsClient_whenProviderReturnsError_logsSafeMetadataWithoutLeakingResponseOrEmail() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        RestClient restClient = builder.build();
+
+        HttpsTransactionalEmailClient client = new HttpsTransactionalEmailClient(
+                restClient, "re_valid_api_key", "onboarding@resend.dev", "https://api.resend.com/emails");
+
+        String sensitiveResponseBody = "{\"error\": \"Restricted account token re_super_secret_token_123\", \"email\": \"restricted_user@sensitive.org\"}";
+
+        // First attempt fails with 403 Forbidden
+        server.expect(requestTo("https://api.resend.com/emails"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withStatus(HttpStatus.FORBIDDEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(sensitiveResponseBody));
+
+        // Retry attempt fails with 403 Forbidden
+        server.expect(requestTo("https://api.resend.com/emails"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withStatus(HttpStatus.FORBIDDEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(sensitiveResponseBody));
+
+        ch.qos.logback.classic.Logger logger = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(HttpsTransactionalEmailClient.class);
+        ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent> listAppender = new ch.qos.logback.core.read.ListAppender<>();
+        listAppender.start();
+        logger.addAppender(listAppender);
+
+        try {
+            boolean result = client.sendEmail("target_customer@sensitive.org", "Subject", "<p>Body</p>");
+            assertThat(result).isFalse();
+
+            assertThat(listAppender.list).isNotEmpty();
+            ch.qos.logback.classic.spi.ILoggingEvent errorEvent = listAppender.list.stream()
+                    .filter(e -> e.getLevel() == ch.qos.logback.classic.Level.ERROR)
+                    .findFirst()
+                    .orElseThrow();
+
+            assertThat(errorEvent.getThrowableProxy())
+                    .as("Throwable must not be attached to log event")
+                    .isNull();
+
+            String loggedMessage = errorEvent.getFormattedMessage();
+            assertThat(loggedMessage).contains("Transactional email provider rejected request: [status=403 FORBIDDEN]");
+            assertThat(loggedMessage).doesNotContain("target_customer@sensitive.org");
+            assertThat(loggedMessage).doesNotContain("restricted_user@sensitive.org");
+            assertThat(loggedMessage).doesNotContain("re_super_secret_token_123");
+            assertThat(loggedMessage).doesNotContain("Restricted account");
+        } finally {
+            logger.detachAppender(listAppender);
+            listAppender.stop();
+        }
+    }
+
+    @Test
+    @DisplayName("OrderNotificationListener logs orderId and exception type without leaking raw throwable or DB message")
+    void orderNotificationListener_whenStatusUpdateFails_logsOrderIdWithoutRawThrowableOrMessage() {
+        Order order = buildSampleOrder();
+        when(emailClient.sendEmail(eq("admin@klickit.com"), anyString(), anyString())).thenReturn(true);
+        when(emailClient.sendEmail(eq("rahul@student.edu"), anyString(), anyString())).thenReturn(true);
+
+        doThrow(new RuntimeException("Connection failed: postgresql://admin:SuperSecretListenerPass@host:5432/db"))
+                .when(orderRepository).updateNotificationStatus(eq(testOrderId), eq(true));
+
+        ch.qos.logback.classic.Logger logger = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(OrderNotificationListener.class);
+        ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent> listAppender = new ch.qos.logback.core.read.ListAppender<>();
+        listAppender.start();
+        logger.addAppender(listAppender);
+
+        try {
+            OrderCreatedEvent event = new OrderCreatedEvent(order, order.getItems());
+            orderNotificationListener.handleOrderCreated(event);
+
+            assertThat(listAppender.list).isNotEmpty();
+            ch.qos.logback.classic.spi.ILoggingEvent errorEvent = listAppender.list.stream()
+                    .filter(e -> e.getLevel() == ch.qos.logback.classic.Level.ERROR)
+                    .findFirst()
+                    .orElseThrow();
+
+            assertThat(errorEvent.getThrowableProxy())
+                    .as("Throwable must not be attached to log event")
+                    .isNull();
+
+            String loggedMessage = errorEvent.getFormattedMessage();
+            assertThat(loggedMessage).contains("Failed to update notification status for order ID [" + testOrderId + "]: [type=java.lang.RuntimeException]");
+            assertThat(loggedMessage).doesNotContain("SuperSecretListenerPass");
+            assertThat(loggedMessage).doesNotContain("postgresql://");
+        } finally {
+            logger.detachAppender(listAppender);
+            listAppender.stop();
+        }
+    }
 }

@@ -79,6 +79,40 @@ public class EmailService {
         }
     }
 
+    public boolean sendOrderConfirmationToCustomer(Order order) {
+        return sendOrderConfirmationToCustomer(order, order != null ? order.getItems() : null);
+    }
+
+    public boolean sendOrderConfirmationToCustomer(Order order, List<OrderItem> items) {
+        if (order == null) {
+            log.warn("Cannot send customer order confirmation: Order is null");
+            return false;
+        }
+
+        String customerEmail = order.getCustomerEmail();
+        if (customerEmail == null || customerEmail.isBlank()) {
+            log.debug("Order [{}] has no customer email; skipping customer confirmation email", order.getId());
+            return false;
+        }
+
+        try {
+            String subject = "Your KLICKIT Order Confirmation - Order #" + order.getId();
+            String htmlBody = buildCustomerOrderEmailBody(order, items);
+
+            boolean success = emailClient.sendEmail(customerEmail.trim(), subject, htmlBody);
+            if (success) {
+                log.info("Order confirmation email successfully dispatched to customer [{}] for order: {}", customerEmail, order.getId());
+            } else {
+                log.warn("Failed to dispatch order confirmation email to customer [{}] for order: {}", customerEmail, order.getId());
+            }
+            return success;
+        } catch (Exception e) {
+            log.error("Exception during customer order confirmation email dispatch for order: {}. Reason: {}",
+                    order.getId(), e.getMessage(), e);
+            return false;
+        }
+    }
+
     public String buildOrderEmailBody(Order order) {
         return buildOrderEmailBody(order, order != null ? order.getItems() : null);
     }
@@ -170,6 +204,105 @@ public class EmailService {
 
         sb.append("<hr style='border: 1px solid #eee; margin-top: 20px;'>");
         sb.append("<p style='color: #999; font-size: 12px;'>This is an automated notification from KLICKIT.</p>");
+        sb.append("</body></html>");
+
+        return sb.toString();
+    }
+
+    public String buildCustomerOrderEmailBody(Order order) {
+        return buildCustomerOrderEmailBody(order, order != null ? order.getItems() : null);
+    }
+
+    public String buildCustomerOrderEmailBody(Order order, List<OrderItem> items) {
+        if (order == null) {
+            return "";
+        }
+
+        StringBuilder sb = new StringBuilder();
+
+        sb.append("<html><body style='font-family: Arial, sans-serif; color: #333;'>");
+        sb.append("<h2 style='color: #2c3e50;'>Thank You for Your Order!</h2>");
+        sb.append("<p style='font-size: 14px; color: #555;'>Hi ")
+                .append(HtmlUtils.htmlEscape(order.getCustomerName() != null ? order.getCustomerName() : "Customer"))
+                .append(", we have received your order and are preparing it for delivery.</p>");
+        sb.append("<hr style='border: 1px solid #eee;'>");
+
+        // Order details - all customer-controlled fields are HTML escaped to prevent stored XSS injection
+        sb.append("<table style='width: 100%; border-collapse: collapse; margin: 16px 0;'>");
+        appendRow(sb, "Order ID", order.getId() != null ? order.getId().toString() : "N/A");
+        appendRow(sb, "Customer Name", HtmlUtils.htmlEscape(order.getCustomerName() != null ? order.getCustomerName() : "N/A"));
+        appendRow(sb, "Customer Phone", HtmlUtils.htmlEscape(order.getCustomerPhone() != null ? order.getCustomerPhone() : "N/A"));
+        appendRow(sb, "Delivery Address", HtmlUtils.htmlEscape(order.getCustomerAddress() != null ? order.getCustomerAddress() : "N/A"));
+        appendRow(sb, "Order Time", order.getCreatedAt() != null
+                ? dateFormatter.format(order.getCreatedAt())
+                : (order.getDeadline() != null ? dateFormatter.format(order.getDeadline().minus(15, java.time.temporal.ChronoUnit.MINUTES)) : "Standard Delivery (ASAP)"));
+        appendRow(sb, "Estimated Delivery", order.getDeadline() != null
+                ? dateFormatter.format(order.getDeadline())
+                : "Standard Delivery (ASAP)");
+        sb.append("</table>");
+
+        // Order items / Products
+        sb.append("<h3 style='color: #2c3e50;'>Items Ordered</h3>");
+        sb.append("<table style='width: 100%; border-collapse: collapse; border: 1px solid #ddd;'>");
+        sb.append("<tr style='background-color: #f8f9fa;'>");
+        sb.append("<th style='padding: 10px; text-align: left; border: 1px solid #ddd;'>Product</th>");
+        sb.append("<th style='padding: 10px; text-align: center; border: 1px solid #ddd;'>Qty</th>");
+        sb.append("<th style='padding: 10px; text-align: right; border: 1px solid #ddd;'>Price</th>");
+        sb.append("<th style='padding: 10px; text-align: right; border: 1px solid #ddd;'>Total</th>");
+        sb.append("</tr>");
+
+        List<OrderItem> itemList = items != null ? items : order.getItems();
+        if (itemList != null && !itemList.isEmpty()) {
+            for (OrderItem item : itemList) {
+                BigDecimal price = item.getPrice() != null ? item.getPrice() : BigDecimal.ZERO;
+                int qty = item.getQuantity();
+                BigDecimal lineTotal = price.multiply(BigDecimal.valueOf(qty));
+                sb.append("<tr>");
+                sb.append("<td style='padding: 10px; border: 1px solid #ddd;'>")
+                        .append(HtmlUtils.htmlEscape(item.getProductName() != null ? item.getProductName() : "Item"))
+                        .append("</td>");
+                sb.append("<td style='padding: 10px; text-align: center; border: 1px solid #ddd;'>")
+                        .append(qty)
+                        .append("</td>");
+                sb.append("<td style='padding: 10px; text-align: right; border: 1px solid #ddd;'>₹")
+                        .append(price.setScale(2, java.math.RoundingMode.HALF_UP))
+                        .append("</td>");
+                sb.append("<td style='padding: 10px; text-align: right; border: 1px solid #ddd;'>₹")
+                        .append(lineTotal.setScale(2, java.math.RoundingMode.HALF_UP))
+                        .append("</td>");
+                sb.append("</tr>");
+            }
+        }
+
+        sb.append("</table>");
+
+        // Authoritative COD Financial Breakdown: Subtotal, Delivery Fee, Total Amount
+        BigDecimal total = order.getTotalAmount() != null ? order.getTotalAmount() : BigDecimal.ZERO;
+        BigDecimal fee = order.getDeliveryFee() != null ? order.getDeliveryFee() : BigDecimal.ZERO;
+        BigDecimal subtotal = total.subtract(fee);
+        if (subtotal.compareTo(BigDecimal.ZERO) < 0) {
+            subtotal = BigDecimal.ZERO;
+        }
+
+        sb.append("<table style='width: 100%; border-collapse: collapse; margin-top: 16px;'>");
+        sb.append("<tr>");
+        sb.append("<td style='padding: 6px; text-align: right; font-weight: bold;'>Subtotal:</td>");
+        sb.append("<td style='padding: 6px; text-align: right; width: 140px;'>₹").append(subtotal.setScale(2, java.math.RoundingMode.HALF_UP)).append("</td>");
+        sb.append("</tr>");
+        sb.append("<tr>");
+        sb.append("<td style='padding: 6px; text-align: right; font-weight: bold;'>Delivery Fee:</td>");
+        sb.append("<td style='padding: 6px; text-align: right; width: 140px;'>")
+          .append(fee.compareTo(BigDecimal.ZERO) == 0 ? "FREE" : "₹" + fee.setScale(2, java.math.RoundingMode.HALF_UP))
+          .append("</td>");
+        sb.append("</tr>");
+        sb.append("<tr style='border-top: 2px solid #2c3e50;'>");
+        sb.append("<td style='padding: 8px; text-align: right; font-weight: bold; font-size: 16px;'>Total (COD Amount):</td>");
+        sb.append("<td style='padding: 8px; text-align: right; font-weight: bold; font-size: 16px; color: #16a34a; width: 140px;'>₹").append(total.setScale(2, java.math.RoundingMode.HALF_UP)).append("</td>");
+        sb.append("</tr>");
+        sb.append("</table>");
+
+        sb.append("<hr style='border: 1px solid #eee; margin-top: 20px;'>");
+        sb.append("<p style='color: #999; font-size: 12px;'>This is an automated order confirmation from KLICKIT. Please have exact change ready for Cash on Delivery.</p>");
         sb.append("</body></html>");
 
         return sb.toString();

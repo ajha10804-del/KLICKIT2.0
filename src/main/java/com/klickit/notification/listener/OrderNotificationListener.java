@@ -36,20 +36,33 @@ public class OrderNotificationListener {
 
         UUID orderId = event.getOrder().getId();
         log.info("Processing order notification for order ID: {}", orderId);
-        boolean sent = false;
+        boolean adminSent = false;
+        boolean customerSent = false;
+
         try {
-            sent = emailService.sendOrderConfirmationToAdmin(event.getOrder(), event.getItems());
+            adminSent = emailService.sendOrderConfirmationToAdmin(event.getOrder(), event.getItems());
         } catch (Exception e) {
-            log.error("Failed to process order email notification for order ID [{}]: {}",
-                    orderId, e.getMessage(), e);
-        } finally {
-            if (orderId != null) {
-                try {
-                    orderService.updateNotificationStatus(orderId, sent);
-                    log.info("Successfully updated order [{}] notificationSent status to: {}", orderId, sent);
-                } catch (Exception e) {
-                    log.error("Failed to update notification status for order ID [{}]: {}", orderId, e.getMessage(), e);
-                }
+            log.error("Failed to process admin order email notification for order ID [{}]: [type={}]",
+                    orderId, e.getClass().getName());
+        }
+
+        try {
+            if (event.getOrder().getCustomerEmail() != null && !event.getOrder().getCustomerEmail().isBlank()) {
+                customerSent = emailService.sendOrderConfirmationToCustomer(event.getOrder(), event.getItems());
+            }
+        } catch (Exception e) {
+            log.error("Failed to process customer order email notification for order ID [{}]: [type={}]",
+                    orderId, e.getClass().getName());
+        }
+
+        boolean sent = adminSent || customerSent;
+        if (orderId != null) {
+            try {
+                orderService.updateNotificationStatus(orderId, sent);
+                log.info("Successfully updated order [{}] notificationSent status to: {}", orderId, sent);
+            } catch (Exception e) {
+                log.error("Failed to update notification status for order ID [{}]: [type={}]",
+                        orderId, e.getClass().getName());
             }
         }
     }

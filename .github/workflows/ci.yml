@@ -15,9 +15,9 @@ jobs:
       postgres:
         image: postgres:18-alpine
         env:
-          POSTGRES_DB: klickit
-          POSTGRES_USER: klickit
-          POSTGRES_PASSWORD: klickit
+          POSTGRES_DB: klickit_test
+          POSTGRES_USER: klickit_test_user
+          POSTGRES_PASSWORD: klickit_test_password
         ports:
           - 5432:5432
         options: >-
@@ -27,9 +27,9 @@ jobs:
           --health-retries 5
 
     env:
-      DB_URL: jdbc:postgresql://localhost:5432/klickit
-      DB_USERNAME: klickit
-      DB_PASSWORD: klickit
+      TEST_DB_URL: jdbc:postgresql://localhost:5432/klickit_test
+      TEST_DB_USERNAME: klickit_test_user
+      TEST_DB_PASSWORD: klickit_test_password
       JWT_SECRET: dGVzdC1kdW1teS1zZWNyZXQta2V5LWZvci11bml0LXRlc3RzLW11c3QtYmUtYXQtbGVhc3QtMjU2LWJpdHMtbG9uZw==
       ADMIN_EMAIL: owner@test.local
 
