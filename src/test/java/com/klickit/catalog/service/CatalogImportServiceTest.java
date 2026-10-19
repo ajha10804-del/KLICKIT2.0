@@ -7,6 +7,10 @@ import com.klickit.cart.repository.CartRepository;
 import com.klickit.cart.service.CartService;
 import com.klickit.catalog.dto.CatalogImportOptions;
 import com.klickit.catalog.dto.CatalogImportResult;
+import com.klickit.order.entity.Order;
+import com.klickit.order.entity.OrderItem;
+import com.klickit.order.entity.OrderStatus;
+import com.klickit.order.repository.OrderRepository;
 import com.klickit.product.entity.Product;
 import com.klickit.product.repository.ProductRepository;
 import org.junit.jupiter.api.AfterEach;
@@ -40,14 +44,19 @@ public class CatalogImportServiceTest {
     @Autowired
     private CartService cartService;
 
+    @Autowired
+    private OrderRepository orderRepository;
+
     @BeforeEach
     void setUp() {
+        orderRepository.deleteAll();
         cartRepository.deleteAll();
         productRepository.deleteAll();
     }
 
     @AfterEach
     void tearDown() {
+        orderRepository.deleteAll();
         cartRepository.deleteAll();
         productRepository.deleteAll();
     }
@@ -244,5 +253,178 @@ public class CatalogImportServiceTest {
         assertThat(productRepository.findByNameIgnoreCase("Valid Product 1")).isPresent();
         assertThat(productRepository.findByNameIgnoreCase("Valid Product 2")).isPresent();
         assertThat(productRepository.findByNameIgnoreCase("Malformed Price Product")).isNotPresent();
+    }
+
+    @Test
+    @DisplayName("Failure Case: When an exception occurs during stream reading with sensitive credentials, logs only controlled metadata")
+    void catalogImport_whenExceptionOccurs_logsSafeMetadataWithoutThrowableOrSensitiveDbMessage() {
+        ch.qos.logback.classic.Logger logger = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(CatalogImportService.class);
+        ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent> listAppender = new ch.qos.logback.core.read.ListAppender<>();
+        listAppender.start();
+        logger.addAppender(listAppender);
+
+        try {
+            InputStream throwingStream = new InputStream() {
+                @Override
+                public int read() throws java.io.IOException {
+                    throw new java.io.IOException("Stream error: postgresql://admin:SuperSecretImportPass456@host:5432/db with token eyJhbGciOiJIUzI1Ni...");
+                }
+            };
+
+            CatalogImportResult result = catalogImportService.importFromCsv(throwingStream, CatalogImportOptions.defaults());
+
+            assertThat(result.getErrors()).isNotEmpty();
+            assertThat(result.getErrors().get(0)).contains("Import failed with exception: IOException");
+            assertThat(result.getErrors().get(0)).doesNotContain("SuperSecretImportPass456");
+            assertThat(result.getErrors().get(0)).doesNotContain("postgresql://");
+
+            assertThat(listAppender.list).isNotEmpty();
+            ch.qos.logback.classic.spi.ILoggingEvent errorEvent = listAppender.list.stream()
+                    .filter(e -> e.getLevel() == ch.qos.logback.classic.Level.ERROR)
+                    .findFirst()
+                    .orElseThrow();
+
+            assertThat(errorEvent.getThrowableProxy())
+                    .as("Throwable must not be attached to log event to prevent stack trace leakage")
+                    .isNull();
+
+            String message = errorEvent.getFormattedMessage();
+            assertThat(message).contains("Failed to import catalog from CSV: [type=java.io.IOException]");
+            assertThat(message).doesNotContain("SuperSecretImportPass456");
+            assertThat(message).doesNotContain("eyJhbGciOiJIUzI1Ni");
+            assertThat(message).doesNotContain("postgresql://");
+        } finally {
+            logger.detachAppender(listAppender);
+            listAppender.stop();
+        }
+    }
+
+    @Test
+    @DisplayName("Requirement 8: Ambiguous Match Protection — Multiple products with same name skipped safely without data corruption")
+    void ambiguousNameMatchesAreSkippedSafely() {
+        Product p1 = productRepository.save(Product.builder()
+                .name("Duplicate Test Item")
+                .category("Bakery")
+                .price(new BigDecimal("40.00"))
+                .stock(20)
+                .active(true)
+                .build());
+
+        Product p2 = productRepository.save(Product.builder()
+                .name("Duplicate Test Item")
+                .category("Bakery")
+                .price(new BigDecimal("45.00"))
+                .stock(30)
+                .active(true)
+                .build());
+
+        String csv = """
+                name,category,price,quantity
+                Duplicate Test Item,Bakery,50.00,500 g
+                """;
+
+        CatalogImportResult result = catalogImportService.importFromCsv(createCsvStream(csv), CatalogImportOptions.defaults());
+
+        assertThat(result.getSkippedCount()).isEqualTo(1);
+        assertThat(result.getErrors()).hasSize(1);
+        assertThat(result.getErrors().get(0)).contains("Ambiguous match for product [Duplicate Test Item] - found 2 records");
+
+        Product p1Reloaded = productRepository.findById(p1.getId()).orElseThrow();
+        assertThat(p1Reloaded.getPrice()).isEqualByComparingTo(new BigDecimal("40.00"));
+
+        Product p2Reloaded = productRepository.findById(p2.getId()).orElseThrow();
+        assertThat(p2Reloaded.getPrice()).isEqualByComparingTo(new BigDecimal("45.00"));
+    }
+
+    @Test
+    @DisplayName("Requirement 9: Image Handling — Preserves existing valid image if feed image is empty, and persists large data URIs")
+    void imageHandlingPreservesExistingImageAndPersistsDataUri() {
+        Product existingWithImage = productRepository.save(Product.builder()
+                .name("Premium Olive Oil")
+                .category("Staples")
+                .price(new BigDecimal("450.00"))
+                .imageUrl("https://cdn.example.com/olive-oil.jpg")
+                .stock(25)
+                .active(true)
+                .build());
+
+        Product existingWithoutImage = productRepository.save(Product.builder()
+                .name("Sunflower Oil")
+                .category("Staples")
+                .price(new BigDecimal("150.00"))
+                .imageUrl(null)
+                .stock(30)
+                .active(true)
+                .build());
+
+        String longDataUri = "data:image/jpeg;base64," + "A".repeat(1000);
+        String csv = String.format("""
+                name,category,price,image_url
+                Premium Olive Oil,Staples,460.00,
+                Sunflower Oil,Staples,155.00,"%s"
+                """, longDataUri);
+
+        CatalogImportResult result = catalogImportService.importFromCsv(createCsvStream(csv), CatalogImportOptions.defaults());
+
+        assertThat(result.getTotalProcessed()).isEqualTo(2);
+
+        Product reloadedOlive = productRepository.findById(existingWithImage.getId()).orElseThrow();
+        assertThat(reloadedOlive.getPrice()).isEqualByComparingTo(new BigDecimal("460.00"));
+        assertThat(reloadedOlive.getImageUrl()).isEqualTo("https://cdn.example.com/olive-oil.jpg");
+
+        Product reloadedSunflower = productRepository.findById(existingWithoutImage.getId()).orElseThrow();
+        assertThat(reloadedSunflower.getPrice()).isEqualByComparingTo(new BigDecimal("155.00"));
+        assertThat(reloadedSunflower.getImageUrl()).isEqualTo(longDataUri);
+    }
+
+    @Test
+    @org.springframework.transaction.annotation.Transactional
+    @DisplayName("Requirement 10: Historical Order Preservation — Orders and OrderItems remain fully intact after catalog sync")
+    void historicalOrdersPreservedDuringCatalogSynchronization() {
+        Product product = productRepository.save(Product.builder()
+                .name("Farm Fresh Milk 1L")
+                .category("Dairy & Eggs")
+                .price(new BigDecimal("60.00"))
+                .stock(50)
+                .active(true)
+                .build());
+
+        Order order = Order.builder()
+                .customerName("Jane Doe")
+                .customerPhone("9876543210")
+                .customerAddress("Flat 101, Green Heights, Indore")
+                .totalAmount(new BigDecimal("120.00"))
+                .status(OrderStatus.PLACED)
+                .build();
+
+        OrderItem item = OrderItem.builder()
+                .productId(product.getId())
+                .productName("Farm Fresh Milk 1L")
+                .quantity(2)
+                .price(new BigDecimal("60.00"))
+                .build();
+        order.addItem(item);
+        Order savedOrder = orderRepository.save(order);
+
+        String csv = """
+                name,category,price,quantity
+                Farm Fresh Milk 1L,Dairy & Eggs,68.00,1 L Tetra Pack
+                """;
+        CatalogImportResult result = catalogImportService.importFromCsv(createCsvStream(csv), CatalogImportOptions.defaults());
+        assertThat(result.getPricesUpdatedCount()).isEqualTo(1);
+
+        Order reloadedOrder = orderRepository.findById(savedOrder.getId()).orElseThrow();
+        assertThat(reloadedOrder.getTotalAmount()).isEqualByComparingTo(new BigDecimal("120.00"));
+        assertThat(reloadedOrder.getItems()).hasSize(1);
+
+        OrderItem reloadedItem = reloadedOrder.getItems().get(0);
+        assertThat(reloadedItem.getProductId()).isEqualTo(product.getId());
+        assertThat(reloadedItem.getProductName()).isEqualTo("Farm Fresh Milk 1L");
+        assertThat(reloadedItem.getPrice()).isEqualByComparingTo(new BigDecimal("60.00"));
+
+        Product reloadedProduct = productRepository.findById(product.getId()).orElseThrow();
+        assertThat(reloadedProduct.getId()).isEqualTo(product.getId());
+        assertThat(reloadedProduct.getPrice()).isEqualByComparingTo(new BigDecimal("68.00"));
+        assertThat(reloadedProduct.getDescription()).isEqualTo("Pack size: 1 L Tetra Pack");
     }
 }

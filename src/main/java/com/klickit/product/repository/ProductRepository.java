@@ -60,6 +60,8 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
 
     Optional<Product> findByNameIgnoreCase(String name);
 
+    List<Product> findAllByNameIgnoreCase(String name);
+
     @Modifying
     @Query("UPDATE Product p SET p.stock = p.stock - :quantity WHERE p.id = :productId AND p.stock >= :quantity AND p.active = true")
     int decrementStockIfAvailable(@Param("productId") UUID productId, @Param("quantity") int quantity);

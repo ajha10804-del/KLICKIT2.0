@@ -103,10 +103,10 @@ public class CatalogImportService {
 
                 String finalDescription = !description.isEmpty() ? description : (!quantity.isEmpty() ? "Pack size: " + quantity : null);
 
-                // Upsert logic matching natural key (name, case-insensitive)
-                Optional<Product> existingOpt = productRepository.findByNameIgnoreCase(name);
-                if (existingOpt.isPresent()) {
-                    Product existing = existingOpt.get();
+                // Match by case-insensitive normalized name only when unambiguous
+                List<Product> matches = productRepository.findAllByNameIgnoreCase(name.trim());
+                if (matches.size() == 1) {
+                    Product existing = matches.get(0);
                     boolean metadataChanged = false;
 
                     // 1. Metadata updates (in-place)
@@ -119,6 +119,7 @@ public class CatalogImportService {
                         existing.setDescription(finalDescription);
                         metaFieldChanged = true;
                     }
+                    // Preserve existing valid image if incoming is empty; update if new valid image provided
                     if (!imageUrl.isEmpty() && !imageUrl.equals(existing.getImageUrl())) {
                         existing.setImageUrl(imageUrl);
                         metaFieldChanged = true;
@@ -145,6 +146,10 @@ public class CatalogImportService {
                     if (metadataChanged) {
                         productRepository.save(existing);
                     }
+                } else if (matches.size() > 1) {
+                    result.setSkippedCount(result.getSkippedCount() + 1);
+                    result.addError(String.format("Line %d: Ambiguous match for product [%s] - found %d records. Skipping row to preserve data integrity.", lineNumber, name, matches.size()));
+                    log.warn("Line {}: Ambiguous match for product [{}] - found {} records. Skipping row.", lineNumber, name, matches.size());
                 } else {
                     // New product insertion
                     int initialStock = feedStock != null ? feedStock : 50;
@@ -163,8 +168,8 @@ public class CatalogImportService {
                 }
             }
         } catch (Exception e) {
-            log.error("Failed to import catalog from CSV: {}", e.getMessage(), e);
-            result.addError("Import failed with exception: " + e.getMessage());
+            log.error("Failed to import catalog from CSV: [type={}]", e.getClass().getName());
+            result.addError("Import failed with exception: " + e.getClass().getSimpleName());
         }
 
         log.info("Catalog import complete: processed={}, inserted={}, metadataUpdated={}, pricesUpdated={}, stockUpdated={}, skipped={}, errors={}",
