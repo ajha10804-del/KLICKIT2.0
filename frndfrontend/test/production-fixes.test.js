@@ -285,10 +285,12 @@ test('Auth Routing: Directs roles strictly according to validated JWT claims', (
   // Admin access
   assert.equal(determineInitialView({ currentPath: '/admin', user: { role: 'ADMIN' }, token: adminToken }), 'ADMIN_DASHBOARD');
   assert.equal(determineInitialView({ currentPath: '/admin', user: { role: 'CUSTOMER' }, token: custToken }), 'ADMIN_BARRIER_403');
+  assert.equal(determineInitialView({ currentPath: '/admin', user: { role: 'DELIVERY_PARTNER' }, token: driverToken }), 'ADMIN_BARRIER_403');
 
   // Driver access
   assert.equal(determineInitialView({ currentPath: '/delivery', user: { role: 'DELIVERY_PARTNER' }, token: driverToken }), 'DELIVERY_DASHBOARD');
   assert.equal(determineInitialView({ currentPath: '/delivery', user: { role: 'CUSTOMER' }, token: custToken }), 'DELIVERY_BARRIER_403');
+  assert.equal(determineInitialView({ currentPath: '/delivery', user: { role: 'ADMIN' }, token: adminToken }), 'DELIVERY_BARRIER_403');
 });
 
 test('Registration Validation: Enforces required fields, phone digits, and minimum password length', () => {

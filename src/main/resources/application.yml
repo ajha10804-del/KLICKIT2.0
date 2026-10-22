@@ -75,6 +75,7 @@ klickit:
       email: ${BOOTSTRAP_ADMIN_EMAIL:}
       phone: ${BOOTSTRAP_ADMIN_PHONE:}
       password: ${BOOTSTRAP_ADMIN_PASSWORD:}
+      rotate: ${BOOTSTRAP_ADMIN_ROTATE:false}
   seed:
     demo-products: ${SEED_DEMO_PRODUCTS:false}
   delivery:
