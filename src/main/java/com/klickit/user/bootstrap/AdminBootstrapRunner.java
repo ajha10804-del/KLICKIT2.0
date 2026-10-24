@@ -60,6 +60,7 @@ public class AdminBootstrapRunner implements ApplicationRunner {
         
         if (isEmailBlank && isPasswordBlank) {
             log.info("Admin bootstrap not configured");
+            log.info("Admin bootstrap outcome: [NOT_CONFIGURED]");
             return;
         }
 
@@ -85,9 +86,11 @@ public class AdminBootstrapRunner implements ApplicationRunner {
                 existingUser.setEnabled(true);
                 userRepository.save(existingUser);
                 log.info("Admin password rotated successfully for: {}", adminEmail);
+                log.info("Admin bootstrap outcome: [ROTATED] for email: {}", adminEmail);
                 return;
             } else {
-                log.info("Admin with email {} already exists, skipping bootstrap (set BOOTSTRAP_ADMIN_ROTATE=true to rotate credentials)", adminEmail);
+                log.warn("Admin with email {} already exists; configured password was NOT applied. Set BOOTSTRAP_ADMIN_ROTATE=true to change it.", adminEmail);
+                log.warn("Admin bootstrap outcome: [SKIPPED] for email: {}", adminEmail);
                 return;
             }
         }
@@ -112,5 +115,6 @@ public class AdminBootstrapRunner implements ApplicationRunner {
         
         userRepository.save(admin);
         log.info("Admin bootstrap successful. Created ADMIN with email: {}", adminEmail);
+        log.info("Admin bootstrap outcome: [CREATED] for email: {}", adminEmail);
     }
 }
