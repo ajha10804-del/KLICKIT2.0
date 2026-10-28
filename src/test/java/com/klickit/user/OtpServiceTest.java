@@ -277,8 +277,8 @@ class OtpServiceTest {
     }
 
     @Test
-    @DisplayName("Verify OTP preserves ADMIN role for pre-existing admin accounts")
-    void verifyOtp_preservesAdminRole() throws Exception {
+    @DisplayName("Verify OTP rejects ADMIN role even with a valid pre-existing code")
+    void verifyOtp_adminRole_rejectedWithInvalidOtpException() throws Exception {
         String adminEmail = "admin@klickit.com";
         String code = "654321";
         String hash = computeHmac(adminEmail, code);
@@ -298,17 +298,40 @@ class OtpServiceTest {
                 .email(adminEmail)
                 .phone("9999999999")
                 .role(Role.ADMIN)
+                .enabled(true)
                 .build();
 
-        when(otpCodeRepository.findFirstByEmailAndConsumedAtIsNullOrderByCreatedAtDesc(adminEmail))
-                .thenReturn(Optional.of(otpCode));
         when(userRepository.findByEmail(adminEmail)).thenReturn(Optional.of(adminUser));
-        when(jwtService.generateToken(adminUser)).thenReturn("jwt.token.admin");
 
-        AuthResponse response = otpService.verifyOtp(adminEmail, code);
+        assertThatThrownBy(() -> otpService.verifyOtp(adminEmail, code))
+                .isInstanceOf(InvalidOtpException.class)
+                .hasMessage("Invalid or expired code");
 
-        assertThat(response.getRole()).isEqualTo(Role.ADMIN);
-        assertThat(adminUser.getRole()).isEqualTo(Role.ADMIN);
+        verify(jwtService, never()).generateToken(any());
+        verify(otpCodeRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Verify OTP rejects DELIVERY_PARTNER role even with a valid pre-existing code")
+    void verifyOtp_deliveryPartnerRole_rejectedWithInvalidOtpException() throws Exception {
+        String driverEmail = "driver@klickit.com";
+        String code = "654321";
+
+        User driverUser = User.builder()
+                .name("Driver User")
+                .email(driverEmail)
+                .phone("9888888888")
+                .role(Role.DELIVERY_PARTNER)
+                .enabled(true)
+                .build();
+
+        when(userRepository.findByEmail(driverEmail)).thenReturn(Optional.of(driverUser));
+
+        assertThatThrownBy(() -> otpService.verifyOtp(driverEmail, code))
+                .isInstanceOf(InvalidOtpException.class)
+                .hasMessage("Invalid or expired code");
+
+        verify(jwtService, never()).generateToken(any());
     }
 
     @Test
@@ -331,9 +354,45 @@ class OtpServiceTest {
     @DisplayName("Request OTP for unknown email silently skips without sending email or creating OtpCode")
     void requestOtp_unknownEmail_silentlySkipped() {
         String unknownEmail = "ghost@example.com";
-        when(userRepository.existsByEmail(unknownEmail)).thenReturn(false);
+        when(userRepository.findByEmail(unknownEmail)).thenReturn(Optional.empty());
 
         otpService.requestOtp(unknownEmail);
+
+        verify(otpCodeRepository, never()).save(any());
+        verify(emailService, never()).sendLoginCode(anyString(), anyString(), anyLong());
+    }
+
+    @Test
+    @DisplayName("Request OTP for ADMIN email silently skips without sending email or creating OtpCode")
+    void requestOtp_adminEmail_silentlySkipped() {
+        String adminEmail = "admin@klickit.com";
+        User adminUser = User.builder()
+                .name("Admin")
+                .email(adminEmail)
+                .role(Role.ADMIN)
+                .enabled(true)
+                .build();
+        when(userRepository.findByEmail(adminEmail)).thenReturn(Optional.of(adminUser));
+
+        otpService.requestOtp(adminEmail);
+
+        verify(otpCodeRepository, never()).save(any());
+        verify(emailService, never()).sendLoginCode(anyString(), anyString(), anyLong());
+    }
+
+    @Test
+    @DisplayName("Request OTP for DELIVERY_PARTNER email silently skips without sending email or creating OtpCode")
+    void requestOtp_deliveryPartnerEmail_silentlySkipped() {
+        String driverEmail = "driver@klickit.com";
+        User driverUser = User.builder()
+                .name("Driver")
+                .email(driverEmail)
+                .role(Role.DELIVERY_PARTNER)
+                .enabled(true)
+                .build();
+        when(userRepository.findByEmail(driverEmail)).thenReturn(Optional.of(driverUser));
+
+        otpService.requestOtp(driverEmail);
 
         verify(otpCodeRepository, never()).save(any());
         verify(emailService, never()).sendLoginCode(anyString(), anyString(), anyLong());

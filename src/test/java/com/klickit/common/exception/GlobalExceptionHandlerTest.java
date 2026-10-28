@@ -205,4 +205,20 @@ class GlobalExceptionHandlerTest {
         assertThat(GlobalExceptionHandler.sanitizeForLogging(null)).isEmpty();
         assertThat(GlobalExceptionHandler.sanitizeForLogging("   ")).isEmpty();
     }
+
+    @Test
+    @DisplayName("Non-user DataIntegrityViolationException falls through to handleGeneral and does not return account message")
+    void handleDataIntegrityViolation_nonUserConstraint_returnsGenericUnexpectedError() {
+        org.springframework.dao.DataIntegrityViolationException ex =
+                new org.springframework.dao.DataIntegrityViolationException("duplicate key value violates unique constraint 'orders_pkey'");
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/orders");
+
+        ResponseEntity<ApiResponse<Void>> response = handler.handleGeneral(ex, request);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getMessage()).isEqualTo("An unexpected error occurred");
+        assertThat(response.getBody().getMessage()).doesNotContain("account");
+        assertThat(response.getBody().getMessage()).doesNotContain("An account with these details already exists");
+    }
 }

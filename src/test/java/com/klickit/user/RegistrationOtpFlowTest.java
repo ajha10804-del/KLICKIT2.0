@@ -127,7 +127,7 @@ class RegistrationOtpFlowTest {
 
         when(userRepository.existsByEmail("alice@wonder.com")).thenReturn(false);
         when(userRepository.existsByPhone("9876543211")).thenReturn(false);
-        when(userRepository.save(any(User.class))).thenAnswer(inv -> {
+        when(userRepository.saveAndFlush(any(User.class))).thenAnswer(inv -> {
             User u = inv.getArgument(0);
             u.setId(UUID.randomUUID());
             return u;
@@ -143,7 +143,7 @@ class RegistrationOtpFlowTest {
 
         // 3. Verify user entity saved with Role.CUSTOMER strictly
         ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
-        verify(userRepository).save(captor.capture());
+        verify(userRepository).saveAndFlush(captor.capture());
         User saved = captor.getValue();
         assertThat(saved.getRole()).isEqualTo(Role.CUSTOMER);
         assertThat(saved.isEnabled()).isTrue();
@@ -174,5 +174,27 @@ class RegistrationOtpFlowTest {
                 .hasMessageContaining("Invalid or expired code");
 
         verify(userRepository, never()).save(any());
+        verify(userRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    @DisplayName("verifyRegistrationOtp catches DataIntegrityViolationException on concurrent save and rethrows IllegalStateException")
+    void verifyRegistrationOtp_concurrentDuplicate_rethrowsIllegalStateException() {
+        RegistrationVerifyRequest req = RegistrationVerifyRequest.builder()
+                .name("Alice")
+                .email("alice@wonder.com")
+                .phone("9876543211")
+                .password("plainTextPass")
+                .code("123456")
+                .build();
+
+        when(userRepository.existsByEmail("alice@wonder.com")).thenReturn(false);
+        when(userRepository.existsByPhone("9876543211")).thenReturn(false);
+        when(userRepository.saveAndFlush(any(User.class)))
+                .thenThrow(new org.springframework.dao.DataIntegrityViolationException("duplicate key value violates unique constraint 'users_email_key'"));
+
+        assertThatThrownBy(() -> userService.verifyRegistrationOtp(req))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("An account with these details already exists");
     }
 }

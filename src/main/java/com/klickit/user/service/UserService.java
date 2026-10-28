@@ -15,6 +15,7 @@ import com.klickit.user.dto.RegistrationOtpRequest;
 import com.klickit.user.dto.RegistrationVerifyRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -116,7 +117,13 @@ public class UserService implements UserDetailsService {
                 .role(Role.CUSTOMER) // Strictly enforce CUSTOMER role (prevents escalation)
                 .build();
 
-        User saved = userRepository.save(user);
+        User saved;
+        try {
+            saved = userRepository.saveAndFlush(user);
+        } catch (DataIntegrityViolationException ex) {
+            throw new IllegalStateException("An account with these details already exists", ex);
+        }
+
         String token = jwtService.generateToken(saved);
 
         return AuthResponse.builder()

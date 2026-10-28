@@ -97,10 +97,11 @@ public class OtpService {
         }
         String normPurpose = (purpose != null && !purpose.isBlank()) ? purpose.trim().toUpperCase() : PURPOSE_LOGIN;
 
-        // If purpose is LOGIN and user does not exist, return silently without generating OTP or sending email
+        // If purpose is LOGIN and user does not exist or is not a CUSTOMER, return silently without generating OTP or sending email
         if (PURPOSE_LOGIN.equals(normPurpose)) {
-            if (!userRepository.existsByEmail(normalizedEmail)) {
-                log.info("Sign-in code requested for unregistered email: {}. Silently skipping code generation.", normalizedEmail);
+            Optional<User> userOpt = userRepository.findByEmail(normalizedEmail);
+            if (userOpt.isEmpty() || userOpt.get().getRole() != Role.CUSTOMER) {
+                log.info("Sign-in code requested for non-customer or unregistered email: {}. Silently skipping code generation.", normalizedEmail);
                 return;
             }
         }
@@ -238,6 +239,11 @@ public class OtpService {
         // Login OTP MUST NEVER auto-provision accounts. Unregistered emails fail with generic error.
         User user = userRepository.findByEmail(normalizedEmail)
                 .orElseThrow(() -> new InvalidOtpException("Invalid or expired code"));
+
+        // Only CUSTOMER accounts may log in via email OTP. Staff accounts (ADMIN, DELIVERY_PARTNER) are rejected.
+        if (user.getRole() != Role.CUSTOMER) {
+            throw new InvalidOtpException("Invalid or expired code");
+        }
 
         verifyAndConsumeOtp(normalizedEmail, code, PURPOSE_LOGIN);
 

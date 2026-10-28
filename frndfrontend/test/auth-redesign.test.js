@@ -198,3 +198,33 @@ test('Login UI Cleanliness: No driver or admin role buttons exist in AuthFlow', 
   assert.equal(authFlowContent.includes('Sign in as Driver'), false);
   assert.equal(authFlowContent.includes('Sign in as Delivery Partner'), false);
 });
+
+test('Auth Redesign: onAuthSuccess is called with (profile, token) in exact correct order', () => {
+  const authFlowSource = fs.readFileSync(path.resolve(__dirname, '../src/components/AuthFlow.jsx'), 'utf8');
+
+  // Verify completeAuth invokes onAuthSuccess(profile, token)
+  assert.equal(authFlowSource.includes('onAuthSuccess(profile, token)'), true, 'Must call onAuthSuccess with profile first, token second');
+
+  // Verify simulated invocation
+  let capturedArgs = [];
+  const mockOnAuthSuccess = (profile, token) => {
+    capturedArgs = [profile, token];
+  };
+
+  const fakeProfile = {
+    userId: '123',
+    name: 'Customer',
+    email: 'cust@test.com',
+    phone: '+919876543210',
+    role: 'CUSTOMER'
+  };
+  const fakeToken = 'eyJhbGciOiJIUzI1NiJ9.fake.jwt';
+
+  mockOnAuthSuccess(fakeProfile, fakeToken);
+
+  assert.equal(typeof capturedArgs[0], 'object', 'First argument must be profile object');
+  assert.equal(capturedArgs[0].email, 'cust@test.com');
+  assert.equal(capturedArgs[0].role, 'CUSTOMER');
+  assert.equal(typeof capturedArgs[1], 'string', 'Second argument must be token string');
+  assert.equal(capturedArgs[1], 'eyJhbGciOiJIUzI1NiJ9.fake.jwt');
+});

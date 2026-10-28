@@ -160,4 +160,20 @@ class OtpAuthControllerSecurityTest {
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.message").value("Invalid or expired code"));
     }
+
+    @Test
+    @DisplayName("POST /auth/otp/verify for staff role returns 401 Unauthorized with generic message and no token")
+    void verifyOtp_staffRole_returns401GenericError() throws Exception {
+        OtpVerifyRequest request = new OtpVerifyRequest("admin@klickit.com", "123456");
+        when(otpService.verifyOtp(eq("admin@klickit.com"), eq("123456")))
+                .thenThrow(new InvalidOtpException("Invalid or expired code"));
+
+        mockMvc.perform(post("/auth/otp/verify")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message").value("Invalid or expired code"))
+                .andExpect(jsonPath("$.data").doesNotExist());
+    }
 }
