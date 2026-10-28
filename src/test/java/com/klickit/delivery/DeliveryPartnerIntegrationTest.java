@@ -34,6 +34,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -456,10 +457,15 @@ public class DeliveryPartnerIntegrationTest {
     }
 
     @Test
-    @DisplayName("Role barrier: CUSTOMER and ADMIN tokens rejected with 403 Forbidden on /delivery/orders")
+    @DisplayName("Role barrier: CUSTOMER rejected with 403 on /delivery/orders, ADMIN allowed to monitor GET endpoints")
     void roleBarrier_customerAndAdminRejectedFromDeliveryOrders() throws Exception {
-        // Admin token cannot access /delivery/orders
+        // Admin token can access GET /delivery/orders (read/monitor access, empty list if no profile)
         mockMvc.perform(get("/delivery/orders")
+                .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk());
+
+        // Admin token cannot mutate /delivery/orders/{id}/start (403 Forbidden)
+        mockMvc.perform(patch("/delivery/orders/" + UUID.randomUUID() + "/start")
                 .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isForbidden());
 

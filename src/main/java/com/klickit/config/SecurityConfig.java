@@ -120,6 +120,8 @@ public class SecurityConfig {
                         // Delivery partner endpoints
                         .requestMatchers(HttpMethod.POST, "/delivery/partners").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.GET, "/delivery/partners").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/delivery/orders").hasAnyRole("DELIVERY_PARTNER", "ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/delivery/orders/*").hasAnyRole("DELIVERY_PARTNER", "ADMIN")
                         .requestMatchers("/delivery/**").hasRole("DELIVERY_PARTNER")
 
                         // Live delivery tracking endpoints

@@ -79,12 +79,25 @@ class OtpServiceTest {
         ReflectionTestUtils.setField(otpService, "resendCooldownSeconds", 60L);
         ReflectionTestUtils.setField(otpService, "maxRequestsPerHour", 5);
         ReflectionTestUtils.setField(otpService, "devLogCode", false);
+        org.mockito.Mockito.lenient().when(userRepository.existsByEmail(TEST_EMAIL)).thenReturn(true);
+        User defaultTestUser = User.builder()
+                .name("Test User")
+                .email(TEST_EMAIL)
+                .role(Role.CUSTOMER)
+                .enabled(true)
+                .build();
+        org.mockito.Mockito.lenient().when(userRepository.findByEmail(TEST_EMAIL)).thenReturn(Optional.of(defaultTestUser));
     }
 
     private String computeHmac(String email, String code) throws Exception {
+        return computeHmac(email, "LOGIN", code);
+    }
+
+    private String computeHmac(String email, String purpose, String code) throws Exception {
         Mac mac = Mac.getInstance("HmacSHA256");
         mac.init(new SecretKeySpec(TEST_SECRET.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
-        return HexFormat.of().formatHex(mac.doFinal((email.toLowerCase().trim() + ":" + code.trim()).getBytes(StandardCharsets.UTF_8)));
+        String normPurpose = (purpose != null && !purpose.isBlank()) ? purpose.trim().toUpperCase() : "LOGIN";
+        return HexFormat.of().formatHex(mac.doFinal((email.toLowerCase().trim() + ":" + normPurpose + ":" + code.trim()).getBytes(StandardCharsets.UTF_8)));
     }
 
     @Test
@@ -299,48 +312,126 @@ class OtpServiceTest {
     }
 
     @Test
-    @DisplayName("Verify OTP auto-provisions new user strictly as CUSTOMER with nullable phone")
-    void verifyOtp_autoProvisionsCustomerOnly() throws Exception {
-        String newEmail = "newuser@example.com";
+    @DisplayName("Verify OTP for unknown email throws InvalidOtpException and never creates an account")
+    void verifyOtp_unknownEmail_neverCreatesAccount() {
+        String unknownEmail = "unknown@example.com";
         String code = "112233";
-        String hash = computeHmac(newEmail, code);
+
+        when(userRepository.findByEmail(unknownEmail)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> otpService.verifyOtp(unknownEmail, code))
+                .isInstanceOf(InvalidOtpException.class)
+                .hasMessageContaining("Invalid or expired code");
+
+        verify(userRepository, never()).save(any(User.class));
+        verify(jwtService, never()).generateToken(any());
+    }
+
+    @Test
+    @DisplayName("Request OTP for unknown email silently skips without sending email or creating OtpCode")
+    void requestOtp_unknownEmail_silentlySkipped() {
+        String unknownEmail = "ghost@example.com";
+        when(userRepository.existsByEmail(unknownEmail)).thenReturn(false);
+
+        otpService.requestOtp(unknownEmail);
+
+        verify(otpCodeRepository, never()).save(any());
+        verify(emailService, never()).sendLoginCode(anyString(), anyString(), anyLong());
+    }
+
+    @Test
+    @DisplayName("Verify OTP rejects disabled account with DisabledException")
+    void verifyOtp_disabledAccountRejected() throws Exception {
+        String code = "123456";
+        String hash = computeHmac(TEST_EMAIL, "LOGIN", code);
 
         OtpCode otpCode = OtpCode.builder()
-                .email(newEmail)
+                .email(TEST_EMAIL)
                 .codeHash(hash)
                 .expiresAt(Instant.now().plus(5, ChronoUnit.MINUTES))
                 .attempts(0)
                 .build();
         otpCode.setId(UUID.randomUUID());
         otpCode.setCreatedAt(Instant.now());
-        otpCode.setUpdatedAt(Instant.now());
 
-        User savedUser = User.builder()
-                .name("newuser")
-                .email(newEmail)
-                .phone(null)
+        User disabledUser = User.builder()
+                .name("Disabled User")
+                .email(TEST_EMAIL)
+                .phone("9876543210")
                 .role(Role.CUSTOMER)
+                .enabled(false)
                 .build();
 
-        when(otpCodeRepository.findFirstByEmailAndConsumedAtIsNullOrderByCreatedAtDesc(newEmail))
+        when(otpCodeRepository.findFirstByEmailAndConsumedAtIsNullOrderByCreatedAtDesc(TEST_EMAIL))
                 .thenReturn(Optional.of(otpCode));
-        when(userRepository.findByEmail(newEmail)).thenReturn(Optional.empty());
-        when(passwordEncoder.encode(anyString())).thenReturn("hashed-random-password");
-        when(userRepository.save(any(User.class))).thenReturn(savedUser);
-        when(jwtService.generateToken(any(User.class))).thenReturn("jwt.token.newuser");
+        when(userRepository.findByEmail(TEST_EMAIL)).thenReturn(Optional.of(disabledUser));
 
-        AuthResponse response = otpService.verifyOtp(newEmail, code);
+        assertThatThrownBy(() -> otpService.verifyOtp(TEST_EMAIL, code))
+                .isInstanceOf(org.springframework.security.authentication.DisabledException.class)
+                .hasMessageContaining("Account is disabled");
 
-        assertThat(response.getRole()).isEqualTo(Role.CUSTOMER);
-        assertThat(response.getEmail()).isEqualTo(newEmail);
-        assertThat(response.getPhone()).isNull();
+        verify(jwtService, never()).generateToken(any());
+    }
 
-        ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
-        verify(userRepository).save(userCaptor.capture());
-        User createdUser = userCaptor.getValue();
-        assertThat(createdUser.getRole()).isEqualTo(Role.CUSTOMER);
-        assertThat(createdUser.getEmail()).isEqualTo(newEmail);
-        assertThat(createdUser.getPhone()).isNull();
+    @Test
+    @DisplayName("Purpose separation: registration code is rejected at login verify")
+    void purposeSeparation_registrationCodeRejectedAtLoginVerify() throws Exception {
+        String code = "123456";
+        // OTP was generated for REGISTRATION
+        String registrationHash = computeHmac(TEST_EMAIL, "REGISTRATION", code);
+
+        OtpCode otpCode = OtpCode.builder()
+                .email(TEST_EMAIL)
+                .codeHash(registrationHash)
+                .expiresAt(Instant.now().plus(5, ChronoUnit.MINUTES))
+                .attempts(0)
+                .build();
+        otpCode.setId(UUID.randomUUID());
+        otpCode.setCreatedAt(Instant.now());
+
+        User existingUser = User.builder()
+                .name("Alice")
+                .email(TEST_EMAIL)
+                .phone("9876543210")
+                .role(Role.CUSTOMER)
+                .enabled(true)
+                .build();
+
+        when(otpCodeRepository.findFirstByEmailAndConsumedAtIsNullOrderByCreatedAtDesc(TEST_EMAIL))
+                .thenReturn(Optional.of(otpCode));
+        when(userRepository.findByEmail(TEST_EMAIL)).thenReturn(Optional.of(existingUser));
+
+        // When submitted to verifyOtp (which uses PURPOSE_LOGIN), hash mismatch occurs
+        assertThatThrownBy(() -> otpService.verifyOtp(TEST_EMAIL, code))
+                .isInstanceOf(InvalidOtpException.class)
+                .hasMessageContaining("Invalid or expired code");
+
+        verify(jwtService, never()).generateToken(any());
+    }
+
+    @Test
+    @DisplayName("Purpose separation: login code is rejected at registration verify")
+    void purposeSeparation_loginCodeRejectedAtRegistrationVerify() throws Exception {
+        String code = "123456";
+        // OTP was generated for LOGIN
+        String loginHash = computeHmac(TEST_EMAIL, "LOGIN", code);
+
+        OtpCode otpCode = OtpCode.builder()
+                .email(TEST_EMAIL)
+                .codeHash(loginHash)
+                .expiresAt(Instant.now().plus(5, ChronoUnit.MINUTES))
+                .attempts(0)
+                .build();
+        otpCode.setId(UUID.randomUUID());
+        otpCode.setCreatedAt(Instant.now());
+
+        when(otpCodeRepository.findFirstByEmailAndConsumedAtIsNullOrderByCreatedAtDesc(TEST_EMAIL))
+                .thenReturn(Optional.of(otpCode));
+
+        // When submitted with PURPOSE_REGISTRATION, hash mismatch occurs
+        assertThatThrownBy(() -> otpService.verifyAndConsumeOtp(TEST_EMAIL, code, OtpService.PURPOSE_REGISTRATION))
+                .isInstanceOf(InvalidOtpException.class)
+                .hasMessageContaining("Invalid or expired code");
     }
 
     @Test

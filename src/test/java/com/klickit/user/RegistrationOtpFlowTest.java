@@ -71,7 +71,7 @@ class RegistrationOtpFlowTest {
 
         userService.requestRegistrationOtp(req);
 
-        verify(otpService).requestOtp("newuser@example.com");
+        verify(otpService).requestOtp("newuser@example.com", OtpService.PURPOSE_REGISTRATION);
     }
 
     @Test
@@ -136,7 +136,7 @@ class RegistrationOtpFlowTest {
         AuthResponse resp = userService.verifyRegistrationOtp(req);
 
         // 1. Verify OTP was verified & consumed
-        verify(otpService).verifyAndConsumeOtp("alice@wonder.com", "123456");
+        verify(otpService).verifyAndConsumeOtp("alice@wonder.com", "123456", OtpService.PURPOSE_REGISTRATION);
 
         // 2. Verify password was encoded
         verify(passwordEncoder).encode("plainTextPass");
@@ -167,7 +167,7 @@ class RegistrationOtpFlowTest {
                 .build();
 
         doThrow(new InvalidOtpException("Invalid or expired code"))
-                .when(otpService).verifyAndConsumeOtp("alice@wonder.com", "000000");
+                .when(otpService).verifyAndConsumeOtp("alice@wonder.com", "000000", OtpService.PURPOSE_REGISTRATION);
 
         assertThatThrownBy(() -> userService.verifyRegistrationOtp(req))
                 .isInstanceOf(InvalidOtpException.class)

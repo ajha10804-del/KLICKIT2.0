@@ -202,6 +202,53 @@ class DeliveryServiceSecurityTest {
                 .hasMessageContaining("You are not authorized to deliver this order");
     }
 
+    @Test
+    @DisplayName("Admin without partner profile gets empty list from getMyAssignedOrders")
+    void adminWithoutPartnerProfile_getMyAssignedOrders_returnsEmptyList() {
+        authenticate("admin@klickit.com", "ADMIN");
+        when(deliveryPartnerRepository.findByUserEmail("admin@klickit.com")).thenReturn(Optional.empty());
+
+        List<OrderResponse> orders = deliveryService.getMyAssignedOrders();
+        assertThat(orders).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Admin can view assigned orders for any partnerId")
+    void admin_canViewAssignedOrdersForAnyPartner() {
+        UUID partnerId = UUID.randomUUID();
+        Order assignedOrder = createOrder(UUID.randomUUID(), partnerId, "Order for Partner");
+
+        authenticate("admin@klickit.com", "ADMIN");
+        when(orderRepository.findByDeliveryPartnerIdAndStatusInOrderByDeadlineAsc(eq(partnerId), any()))
+                .thenReturn(List.of(assignedOrder));
+
+        List<OrderResponse> orders = deliveryService.getAssignedOrders(partnerId);
+        assertThat(orders).hasSize(1);
+        assertThat(orders.get(0).getCustomerName()).isEqualTo("Order for Partner");
+    }
+
+    @Test
+    @DisplayName("Admin cannot start delivery without being the assigned partner")
+    void admin_cannotStartDelivery() {
+        UUID orderId = UUID.randomUUID();
+        authenticate("admin@klickit.com", "ADMIN");
+        when(deliveryPartnerRepository.findByUserEmail("admin@klickit.com")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> deliveryService.startDelivery(orderId))
+                .isInstanceOf(AccessDeniedException.class);
+    }
+
+    @Test
+    @DisplayName("Admin cannot mark delivery completed without being the assigned partner")
+    void admin_cannotMarkDelivered() {
+        UUID orderId = UUID.randomUUID();
+        authenticate("admin@klickit.com", "ADMIN");
+        when(deliveryPartnerRepository.findByUserEmail("admin@klickit.com")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> deliveryService.markDelivered(orderId))
+                .isInstanceOf(AccessDeniedException.class);
+    }
+
     private Order createOrder(UUID id, UUID partnerId, String customerName) {
         Order order = Order.builder()
                 .customerName(customerName)

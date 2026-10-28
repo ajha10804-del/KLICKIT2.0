@@ -72,6 +72,18 @@ class OtpConcurrencyIntegrationTest {
     @BeforeEach
     void setUp() {
         cleanUp();
+        transactionTemplate.execute(status -> {
+            User testUser = User.builder()
+                    .name("Concurrency User")
+                    .email(TEST_EMAIL)
+                    .phone("+919123456789")
+                    .password(passwordEncoder.encode("password123"))
+                    .role(Role.CUSTOMER)
+                    .enabled(true)
+                    .build();
+            userRepository.save(testUser);
+            return null;
+        });
         when(emailService.sendLoginCode(anyString(), anyString(), anyLong())).thenReturn(true);
     }
 
@@ -99,7 +111,7 @@ class OtpConcurrencyIntegrationTest {
     private String computeHmac(String email, String code) throws Exception {
         Mac mac = Mac.getInstance("HmacSHA256");
         mac.init(new SecretKeySpec(otpSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
-        return HexFormat.of().formatHex(mac.doFinal((email.toLowerCase().trim() + ":" + code.trim()).getBytes(StandardCharsets.UTF_8)));
+        return HexFormat.of().formatHex(mac.doFinal((email.toLowerCase().trim() + ":LOGIN:" + code.trim()).getBytes(StandardCharsets.UTF_8)));
     }
 
     @Test

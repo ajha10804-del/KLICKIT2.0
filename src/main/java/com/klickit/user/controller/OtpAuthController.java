@@ -26,8 +26,8 @@ public class OtpAuthController {
     @Operation(summary = "Request OTP", description = "Send a 6-digit one-time password to the specified email")
     @PostMapping("/request")
     public ResponseEntity<ApiResponse<Void>> requestOtp(@Valid @RequestBody OtpRequest request) {
-        otpService.requestOtp(request.getEmail());
-        return ResponseEntity.ok(ApiResponse.success("If the email is valid, a sign-in code has been sent", null));
+        otpService.requestOtp(request.getEmail(), OtpService.PURPOSE_LOGIN);
+        return ResponseEntity.ok(ApiResponse.success("If this email is registered, we've sent a sign-in code.", null));
     }
 
     @Operation(summary = "Verify OTP", description = "Verify a 6-digit one-time password and authenticate user")

@@ -41,6 +41,9 @@ public class OtpService {
     private final JwtService jwtService;
     private final PasswordEncoder passwordEncoder;
 
+    public static final String PURPOSE_LOGIN = "LOGIN";
+    public static final String PURPOSE_REGISTRATION = "REGISTRATION";
+
     @Value("${klickit.otp.enabled:true}")
     private boolean enabled;
 
@@ -83,9 +86,23 @@ public class OtpService {
 
     @Transactional
     public void requestOtp(String email) {
+        requestOtp(email, PURPOSE_LOGIN);
+    }
+
+    @Transactional
+    public void requestOtp(String email, String purpose) {
         String normalizedEmail = email != null ? email.toLowerCase().trim() : "";
         if (normalizedEmail.isBlank()) {
             throw new IllegalArgumentException("Email cannot be empty");
+        }
+        String normPurpose = (purpose != null && !purpose.isBlank()) ? purpose.trim().toUpperCase() : PURPOSE_LOGIN;
+
+        // If purpose is LOGIN and user does not exist, return silently without generating OTP or sending email
+        if (PURPOSE_LOGIN.equals(normPurpose)) {
+            if (!userRepository.existsByEmail(normalizedEmail)) {
+                log.info("Sign-in code requested for unregistered email: {}. Silently skipping code generation.", normalizedEmail);
+                return;
+            }
         }
 
         synchronized (getEmailLock(normalizedEmail)) {
@@ -100,7 +117,10 @@ public class OtpService {
             if (lastOtpOpt.isPresent()) {
                 Instant cooldownCutoff = Instant.now().minusSeconds(resendCooldownSeconds);
                 if (lastOtpOpt.get().getCreatedAt().isAfter(cooldownCutoff)) {
-                    throw new OtpRateLimitException("Please wait before requesting another sign-in code");
+                    String msg = PURPOSE_REGISTRATION.equals(normPurpose)
+                            ? "Please wait before requesting another verification code"
+                            : "Please wait before requesting another sign-in code";
+                    throw new OtpRateLimitException(msg);
                 }
             }
 
@@ -108,7 +128,10 @@ public class OtpService {
             Instant hourlyCutoff = Instant.now().minus(1, ChronoUnit.HOURS);
             long requestCountLastHour = otpCodeRepository.countByEmailAndCreatedAtAfter(normalizedEmail, hourlyCutoff);
             if (requestCountLastHour >= maxRequestsPerHour) {
-                throw new OtpRateLimitException("Too many sign-in code requests. Please try again later");
+                String msg = PURPOSE_REGISTRATION.equals(normPurpose)
+                        ? "Too many verification code requests. Please try again later"
+                        : "Too many sign-in code requests. Please try again later";
+                throw new OtpRateLimitException(msg);
             }
 
             // 3. Invalidate any existing active OTPs for this email
@@ -116,7 +139,7 @@ public class OtpService {
 
             // 4. Generate code and digest
             String code = generateNumericCode();
-            String codeHash = computeHmacSha256(normalizedEmail, code);
+            String codeHash = computeHmacSha256(normalizedEmail, normPurpose, code);
             Instant now = Instant.now();
 
             OtpCode otp = OtpCode.builder()
@@ -130,28 +153,42 @@ public class OtpService {
 
             otpCodeRepository.save(otp);
 
-            // 5. Send email
-            boolean sent = emailService.sendLoginCode(normalizedEmail, code, ttlMinutes);
+            // 5. Send email with purpose-separated wording
+            boolean isRegistration = PURPOSE_REGISTRATION.equals(normPurpose);
+            boolean sent = isRegistration
+                    ? emailService.sendRegistrationCode(normalizedEmail, code, ttlMinutes)
+                    : emailService.sendLoginCode(normalizedEmail, code, ttlMinutes);
+
             if (!sent) {
                 if (devLogCode) {
-                    log.info("[DEV ONLY] Login OTP code for {}: {} (email delivery skipped: local dev mode)", normalizedEmail, code);
+                    log.info("[DEV ONLY] {} OTP code for {}: {} (email delivery skipped: local dev mode)",
+                            normPurpose, normalizedEmail, code);
                 } else {
-                    log.error("Failed to send OTP login email to {}", normalizedEmail);
+                    log.error("Failed to send OTP {} email to {}", normPurpose, normalizedEmail);
                     otpCodeRepository.delete(otp);
-                    throw new IllegalStateException("Failed to send sign-in code. Please try again later");
+                    String failMsg = isRegistration
+                            ? "Failed to send verification code. Please try again later"
+                            : "Failed to send sign-in code. Please try again later";
+                    throw new IllegalStateException(failMsg);
                 }
             } else if (devLogCode) {
-                log.info("[DEV ONLY] Login OTP code for {}: {}", normalizedEmail, code);
+                log.info("[DEV ONLY] {} OTP code for {}: {}", normPurpose, normalizedEmail, code);
             }
         }
     }
 
     @Transactional(noRollbackFor = InvalidOtpException.class)
     public void verifyAndConsumeOtp(String email, String code) {
+        verifyAndConsumeOtp(email, code, PURPOSE_LOGIN);
+    }
+
+    @Transactional(noRollbackFor = InvalidOtpException.class)
+    public void verifyAndConsumeOtp(String email, String code, String purpose) {
         String normalizedEmail = email != null ? email.toLowerCase().trim() : "";
         if (normalizedEmail.isBlank() || code == null || code.isBlank()) {
             throw new InvalidOtpException("Invalid or expired code");
         }
+        String normPurpose = (purpose != null && !purpose.isBlank()) ? purpose.trim().toUpperCase() : PURPOSE_LOGIN;
 
         // Row lock on active unconsumed code prevents concurrent verification race conditions
         Optional<OtpCode> otpOpt = otpCodeRepository.findFirstByEmailAndConsumedAtIsNullOrderByCreatedAtDesc(normalizedEmail);
@@ -172,8 +209,8 @@ public class OtpService {
             throw new InvalidOtpException("Invalid or expired code");
         }
 
-        // Constant-time digest comparison
-        String expectedHash = computeHmacSha256(normalizedEmail, code);
+        // Constant-time digest comparison with purpose included
+        String expectedHash = computeHmacSha256(normalizedEmail, normPurpose, code);
         if (!matchesDigest(expectedHash, otp.getCodeHash())) {
             int newAttempts = otp.getAttempts() + 1;
             otp.setAttempts(newAttempts);
@@ -194,11 +231,15 @@ public class OtpService {
     @Transactional(noRollbackFor = InvalidOtpException.class)
     public AuthResponse verifyOtp(String email, String code) {
         String normalizedEmail = email != null ? email.toLowerCase().trim() : "";
-        verifyAndConsumeOtp(normalizedEmail, code);
+        if (normalizedEmail.isBlank()) {
+            throw new InvalidOtpException("Invalid or expired code");
+        }
 
-        // Resolve user or auto-provision CUSTOMER
+        // Login OTP MUST NEVER auto-provision accounts. Unregistered emails fail with generic error.
         User user = userRepository.findByEmail(normalizedEmail)
-                .orElseGet(() -> provisionCustomer(normalizedEmail));
+                .orElseThrow(() -> new InvalidOtpException("Invalid or expired code"));
+
+        verifyAndConsumeOtp(normalizedEmail, code, PURPOSE_LOGIN);
 
         if (!user.isEnabled()) {
             throw new org.springframework.security.authentication.DisabledException("Account is disabled. Please contact support.");
@@ -226,30 +267,18 @@ public class OtpService {
         }
     }
 
-    private User provisionCustomer(String email) {
-        String name = (email != null && email.contains("@"))
-                ? email.substring(0, email.indexOf('@'))
-                : "Customer";
-        User user = User.builder()
-                .name(name)
-                .email(email)
-                .password(passwordEncoder.encode(UUID.randomUUID().toString()))
-                .role(Role.CUSTOMER)
-                .build();
-        return userRepository.save(user);
-    }
-
     private String generateNumericCode() {
         int code = 100_000 + secureRandom.nextInt(900_000);
         return String.valueOf(code);
     }
 
-    private String computeHmacSha256(String email, String code) {
+    private String computeHmacSha256(String email, String purpose, String code) {
         try {
             Mac mac = Mac.getInstance("HmacSHA256");
             SecretKeySpec secretKeySpec = new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
             mac.init(secretKeySpec);
-            String payload = email.toLowerCase().trim() + ":" + code.trim();
+            String normPurpose = (purpose != null && !purpose.isBlank()) ? purpose.trim().toUpperCase() : PURPOSE_LOGIN;
+            String payload = email.toLowerCase().trim() + ":" + normPurpose + ":" + code.trim();
             byte[] hash = mac.doFinal(payload.getBytes(StandardCharsets.UTF_8));
             return HexFormat.of().formatHex(hash);
         } catch (Exception e) {

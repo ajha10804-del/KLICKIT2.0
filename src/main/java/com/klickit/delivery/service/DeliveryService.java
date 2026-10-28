@@ -19,6 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import com.klickit.user.entity.Role;
@@ -76,12 +77,25 @@ public class DeliveryService {
 
     @Transactional(readOnly = true)
     public List<OrderResponse> getMyAssignedOrders() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        boolean isAdmin = auth != null && auth.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+        if (isAdmin) {
+            Optional<DeliveryPartner> partnerOpt = deliveryPartnerRepository.findByUserEmail(auth.getName());
+            return partnerOpt.map(p -> getOrdersForPartner(p.getId())).orElseGet(List::of);
+        }
         DeliveryPartner partner = getAuthenticatedDeliveryPartner();
         return getOrdersForPartner(partner.getId());
     }
 
     @Transactional(readOnly = true)
     public List<OrderResponse> getAssignedOrders(UUID partnerId) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        boolean isAdmin = auth != null && auth.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+        if (isAdmin) {
+            return getOrdersForPartner(partnerId);
+        }
         DeliveryPartner currentPartner = getAuthenticatedDeliveryPartner();
         if (!currentPartner.getId().equals(partnerId)) {
             throw new AccessDeniedException("You are not authorized to access orders for another delivery partner");

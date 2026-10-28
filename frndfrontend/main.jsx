@@ -6,6 +6,7 @@ import DeliveryDashboard from './admin and deliverydashboard/DeliveryDashboard.j
 import LocationPicker from './src/components/LocationPicker.jsx';
 import CustomerTrackingMap from './src/components/CustomerTrackingMap.jsx';
 import OtpLoginForm from './src/components/OtpLoginForm.jsx';
+import AuthFlow from './src/components/AuthFlow.jsx';
 import AuthScreen from './src/components/AuthScreen.jsx';
 
 const API = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
@@ -118,7 +119,7 @@ function AdminAccessBarrier({ user, onSignIn, onBackToStore }) {
 }
 
 function DeliveryAccessBarrier({ user, onSignIn, onBackToStore }) {
-  const isWrongRole = user && user.role !== 'DELIVERY_PARTNER';
+  const isWrongRole = user && user.role !== 'DELIVERY_PARTNER' && user.role !== 'ADMIN';
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8faf9', padding: '20px', fontFamily: 'Inter, sans-serif' }}>
@@ -162,7 +163,6 @@ function App() {
   const [cart, setCart] = useState({});
   const [cartOpen, setCartOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
-  const [authMode, setAuthMode] = useState('otp');
   const [user, setUser] = useState(() => {
     try {
       const u = JSON.parse(localStorage.getItem('klickit_user') || 'null');
@@ -195,7 +195,6 @@ function App() {
     }
   });
   const [addressOpen, setAddressOpen] = useState(false);
-  const [authForm, setAuthForm] = useState({ name: '', email: '', password: '', phone: '' });
   const [loading, setLoading] = useState(false);
   const [editingPhone, setEditingPhone] = useState(false);
   const [phoneInput, setPhoneInput] = useState('');
@@ -337,7 +336,6 @@ function App() {
 
   function openAccount(tab = 'profile') {
     if (!user) {
-      setAuthMode('otp');
       setAuthOpen(true);
       return;
     }
@@ -438,63 +436,6 @@ function App() {
       }
     }
   }, [currentPath]);
-
-  async function submitAuth(e) {
-    e.preventDefault(); setLoading(true);
-    const normalizedEmail = authForm.email.trim().toLowerCase();
-
-    if (authMode === 'register') {
-      try {
-        const cleanName = authForm.name.trim();
-        const cleanPhone = authForm.phone ? authForm.phone.trim() : '';
-        const cleanPass = authForm.password;
-        const res = await fetch(`${API}/api/auth/register/request-otp`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: cleanName, email: normalizedEmail, phone: cleanPhone, password: cleanPass })
-        });
-        const body = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          throw new Error(body.message || body.error || 'Failed to send verification code. Please check your details.');
-        }
-        notify(`Verification code sent to ${normalizedEmail}. Please enter the code below.`);
-        setAuthMode('otp');
-      } catch (err) {
-        notify(err.message === 'Failed to fetch' ? 'Could not connect to the server.' : err.message);
-      } finally {
-        setLoading(false);
-      }
-      return;
-    }
-
-    const endpoint = '/api/auth/login';
-    const payload = { email: normalizedEmail, password: authForm.password };
-    try {
-      const res = await fetch(`${API}${endpoint}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        if (res.status === 401) {
-          throw new Error(body.message || 'Invalid email or password. Please verify your credentials.');
-        }
-        if (res.status === 403) {
-          throw new Error('Access denied. You do not have permission to access this portal.');
-        }
-        throw new Error(body.message || body.error || 'Please check your details and try again.');
-      }
-      const token = body.token || body.accessToken || body.data?.token;
-      const resUser = body.user || body.data?.user || body.data;
-      const profile = {
-        name: resUser?.name || authForm.name || authForm.email.split('@')[0],
-        email: resUser?.email || normalizedEmail,
-        phone: resUser?.phone || authForm.phone || '',
-        role: resUser?.role || 'CUSTOMER'
-      };
-      handleAuthSuccess(profile, token);
-    } catch (err) {
-      notify(err.message === 'Failed to fetch' ? 'Could not connect to the server. Check that your backend is running.' : err.message);
-    }
-    finally { setLoading(false); }
-  }
 
   async function checkout() {
     if (!cartCount) return;
@@ -678,25 +619,18 @@ function App() {
       <>
         <AdminAccessBarrier
           user={user}
-          onSignIn={() => { setAuthMode('login'); setAuthOpen(true); }}
+          onSignIn={() => setAuthOpen(true)}
           onBackToStore={() => navigate('/')}
         />
         {authOpen && (
-          <div className="modal-wrap">
-            <button className="modal-backdrop" onClick={() => setAuthOpen(false)} aria-label="Close sign in"></button>
-            <div className="auth-modal">
-              <button className="close-button modal-close" onClick={() => setAuthOpen(false)}>×</button>
-              <div className="auth-brand">k<span>!</span></div>
-              <span className="section-kicker">ADMINISTRATOR SIGN IN</span>
-              <h2>Sign in to Admin Panel</h2>
-              <p>Enter administrator credentials to manage orders and drivers.</p>
-              <form onSubmit={submitAuth}>
-                <input required type="email" placeholder="Admin email address" value={authForm.email} onChange={e => setAuthForm({...authForm, email:e.target.value})}/>
-                <input required minLength="6" type="password" placeholder="Password" value={authForm.password} onChange={e => setAuthForm({...authForm, password:e.target.value})}/>
-                <button className="checkout-button" disabled={loading}>{loading ? 'Signing in…' : 'Sign in as Admin ↗'}</button>
-              </form>
-            </div>
-          </div>
+          <AuthFlow
+            apiBaseUrl={API}
+            onAuthSuccess={handleAuthSuccess}
+            notify={notify}
+            onClose={() => setAuthOpen(false)}
+            allowRegister={false}
+            barrierTitle="Administrator Sign In"
+          />
         )}
         {toast && <div className="toast"><span>✦</span>{toast}</div>}
       </>
@@ -705,7 +639,7 @@ function App() {
 
   // ROUTE DISPATCH: Delivery Partner Dashboard
   if (currentPath === '/delivery' || currentPath.startsWith('/delivery/')) {
-    if (user?.role === 'DELIVERY_PARTNER') {
+    if (user?.role === 'DELIVERY_PARTNER' || user?.role === 'ADMIN') {
       return (
         <>
           <DeliveryDashboard
@@ -722,25 +656,18 @@ function App() {
       <>
         <DeliveryAccessBarrier
           user={user}
-          onSignIn={() => { setAuthMode('login'); setAuthOpen(true); }}
+          onSignIn={() => setAuthOpen(true)}
           onBackToStore={() => navigate('/')}
         />
         {authOpen && (
-          <div className="modal-wrap">
-            <button className="modal-backdrop" onClick={() => setAuthOpen(false)} aria-label="Close sign in"></button>
-            <div className="auth-modal">
-              <button className="close-button modal-close" onClick={() => setAuthOpen(false)}>×</button>
-              <div className="auth-brand">k<span>!</span></div>
-              <span className="section-kicker">DELIVERY PARTNER SIGN IN</span>
-              <h2>Sign in to Driver Portal</h2>
-              <p>Enter your driver credentials to access your assigned orders.</p>
-              <form onSubmit={submitAuth}>
-                <input required type="email" placeholder="Driver email address" value={authForm.email} onChange={e => setAuthForm({...authForm, email:e.target.value})}/>
-                <input required minLength="6" type="password" placeholder="Password" value={authForm.password} onChange={e => setAuthForm({...authForm, password:e.target.value})}/>
-                <button className="checkout-button" disabled={loading}>{loading ? 'Signing in…' : 'Sign in as Driver ↗'}</button>
-              </form>
-            </div>
-          </div>
+          <AuthFlow
+            apiBaseUrl={API}
+            onAuthSuccess={handleAuthSuccess}
+            notify={notify}
+            onClose={() => setAuthOpen(false)}
+            allowRegister={false}
+            barrierTitle="Delivery Partner Sign In"
+          />
         )}
         {toast && <div className="toast"><span>✦</span>{toast}</div>}
       </>
@@ -989,7 +916,7 @@ function App() {
           <span>⚙</span><span>Admin Portal</span>
         </button>
       )}
-      {user?.role === 'DELIVERY_PARTNER' && (
+      {(user?.role === 'DELIVERY_PARTNER' || user?.role === 'ADMIN') && (
         <button
           className="account-btn"
           style={{ background: '#ede9fe', color: '#6d28d9', fontWeight: 600, border: '1px solid #ddd6fe' }}
@@ -1019,7 +946,7 @@ function App() {
         {filtered.length ? <div className="product-grid">{filtered.map(p => <article className="product-card" key={p.id}><div className="product-image-wrap"><span className="product-time"><span>◷</span> {p.time || '10 mins'}</span>{p.mrp > p.price && <span className="discount-tag">{Math.round((p.mrp-p.price)/p.mrp*100)}% OFF</span>}<img src={p.image || PLACEHOLDER_IMAGE} alt={p.name} loading="lazy" onError={e => { if (e.currentTarget.src !== PLACEHOLDER_IMAGE) { e.currentTarget.src = PLACEHOLDER_IMAGE; } }}/></div><div className="product-info"><div className="product-category">{p.category || 'DAILY ESSENTIALS'}</div><h3>{p.name}</h3><p>{p.description}</p><div className="product-bottom"><div className="price-stack"><b>{money(p.price)}</b>{p.mrp > p.price && <del>{money(p.mrp)}</del>}</div>{cart[p.id] ? <div className="qty-control"><button onClick={() => changeQty(p.id, -1)} aria-label={`Remove one ${p.name}`}>−</button><b>{cart[p.id]}</b><button onClick={() => changeQty(p.id, 1)} aria-label={`Add one ${p.name}`}>+</button></div> : <button className="add-button" onClick={() => { changeQty(p.id, 1); notify(`${p.name} added to cart`); }}>ADD <span>＋</span></button>}</div></div></article>)}</div> : <div className="empty-search"><span>🧺</span><h3>No matches just yet</h3><p>Try another search or browse all our everyday essentials.</p><button onClick={() => { setSearch(''); setActiveCategory('All'); }}>See all products</button></div>}
       </section>
       <section className="promo-banner"><div className="promo-decoration">✳</div><div><span className="section-kicker">A LITTLE SOMETHING EXTRA</span><h2>Your first basket<br/>looks <em>better on us.</em></h2><p>Good things start with a little treat. Save on your first order.</p></div><div className="promo-code"><span>USE CODE</span><b>KLICKFIRST</b><small>Terms & conditions apply</small></div><div className="promo-sun">☺</div></section>
-      <footer className="footer"><div className="footer-top"><div className="footer-brand"><a className="brand" href="#top" onClick={(e) => { e.preventDefault(); navigate('/'); }}><span className="brand-mark">k<span>!</span></span><span className="brand-word">klick<span>it</span><i>.</i></span></a><p>Everyday things. Extraordinary convenience.</p></div><div className="footer-col"><b>Discover</b><a href="#shop">All products</a><a href="#shop" onClick={() => setActiveCategory('Fruits & Veg')}>Fresh produce</a><a href="#shop" onClick={() => setActiveCategory('Munchies')}>Snacks & munchies</a></div><div className="footer-col"><b>Portals</b><a href="#top" onClick={(e) => { e.preventDefault(); navigate('/admin'); }}>Admin Portal</a><a href="#top" onClick={(e) => { e.preventDefault(); navigate('/delivery'); }}>Delivery Portal</a></div><div className="footer-note"><span>MADE FOR YOUR EVERYDAY ✳</span><p>More living, less running around.</p><div className="social-dots"><i>ig</i><i>in</i><i>♡</i></div></div></div><div className="footer-bottom"><span>© 2026 KlickIt. All little joys reserved.</span><span>Made with a little <b>♥</b> for everyday life.</span></div></footer>
+      <footer className="footer"><div className="footer-top"><div className="footer-brand"><a className="brand" href="#top" onClick={(e) => { e.preventDefault(); navigate('/'); }}><span className="brand-mark">k<span>!</span></span><span className="brand-word">klick<span>it</span><i>.</i></span></a><p>Everyday things. Extraordinary convenience.</p></div><div className="footer-col"><b>Discover</b><a href="#shop">All products</a><a href="#shop" onClick={() => setActiveCategory('Fruits & Veg')}>Fresh produce</a><a href="#shop" onClick={() => setActiveCategory('Munchies')}>Snacks & munchies</a></div><div className="footer-note"><span>MADE FOR YOUR EVERYDAY ✳</span><p>More living, less running around.</p><div className="social-dots"><i>ig</i><i>in</i><i>♡</i></div></div></div><div className="footer-bottom"><span>© 2026 KlickIt. All little joys reserved.</span><span>Made with a little <b>♥</b> for everyday life.</span></div></footer>
     </main>
     {addressOpen && (
       <LocationPicker
@@ -1045,127 +972,14 @@ function App() {
     )}
     {cartOpen && <><button className="overlay" onClick={() => setCartOpen(false)} aria-label="Close cart"></button><aside className="cart-drawer"><div className="drawer-header"><div><span className="section-kicker">YOUR LITTLE HAUL</span><h2>My cart <span>({cartCount})</span></h2></div><button className="close-button" onClick={() => setCartOpen(false)}>×</button></div>{cartCount ? <><div className="delivery-progress"><span>✦</span><div><b>{subtotal >= 199 ? 'You unlocked free delivery!' : `Add ${money(199-subtotal)} more for free delivery`}</b><div className="progress-track"><i style={{ width: `${Math.min(100, subtotal/199*100)}%` }}></i></div></div></div><div className="drawer-items">{cartItems.map(p => <div className="drawer-item" key={p.id}><img src={p.image || PLACEHOLDER_IMAGE} alt={p.name || ''} onError={e => { if (e.currentTarget.src !== PLACEHOLDER_IMAGE) { e.currentTarget.src = PLACEHOLDER_IMAGE; } }}/><div className="drawer-item-info"><b>{p.name}</b><small>{p.description}</small><strong>{money(p.price)}</strong></div><div className="qty-control"><button onClick={() => changeQty(p.id,-1)}>−</button><b>{p.qty}</b><button onClick={() => changeQty(p.id,1)}>+</button></div></div>)}</div><div className="drawer-summary"><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px dashed #e2e4dc', marginBottom: '10px' }}><div style={{ fontSize: '11px', textAlign: 'left', maxWidth: '70%' }}><span style={{ color: '#888a7e', display: 'block', fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Delivery Address</span><b style={{ color: (address || coordinates) ? '#1b1d19' : '#dc2626', wordBreak: 'break-word', display: 'block', marginTop: '2px' }}>{address ? (address + (landmark && landmark !== address ? ` (${landmark})` : '')) : (coordinates ? (landmark ? `${landmark} (Pinned Location)` : `Pinned Location (${coordinates.latitude.toFixed(4)}, ${coordinates.longitude.toFixed(4)})`) : 'No address set — required')}</b>{coordinates ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '9px', color: '#15803d', fontWeight: 600, marginTop: '2px' }}>✓ Location pin set</span> : <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '9px', color: '#dc2626', fontWeight: 600, marginTop: '2px' }}>⚠ Map pin required</span>}</div><button type="button" onClick={() => setAddressOpen(true)} style={{ background: '#f5f6f2', border: '1px solid #d2d5c8', borderRadius: '6px', padding: '4px 10px', fontSize: '10px', cursor: 'pointer', fontWeight: 600, color: '#245b3b' }}>{(address || coordinates) ? 'Change' : '+ Add'}</button></div><div><span>Item total</span><b>{money(subtotal+discount)}</b></div>{discount > 0 && <div className="saving-line"><span>Product savings</span><b>−{money(discount)}</b></div>}<div><span>Delivery fee</span><b>{delivery ? money(delivery) : <span className="free-label">FREE</span>}</b></div><div className="grand-total"><span>To pay</span><b>{money(subtotal+delivery)}</b></div><button className="checkout-button" onClick={checkout} disabled={loading}>{loading ? 'Working on it…' : <>Proceed to checkout <span>{money(subtotal+delivery)} ↗</span></>}</button><small className="secure-note">♡ Secure checkout · Cash on delivery</small></div></> : <div className="empty-cart"><span>🧺</span><h3>Your basket's taking a nap</h3><p>Let's fill it with a few everyday favourites.</p><button onClick={() => setCartOpen(false)}>Start shopping ↗</button></div>}</aside></>}
     {authOpen && (
-      <div className="modal-wrap">
-        <button className="modal-backdrop" onClick={() => setAuthOpen(false)} aria-label="Close sign in"></button>
-        <div className="auth-modal">
-          <button className="close-button modal-close" onClick={() => setAuthOpen(false)}>×</button>
-          <div className="auth-brand">k<span>!</span></div>
-          <span className="section-kicker">YOUR EVERYDAY, MADE EASIER</span>
-
-          <div className="auth-mode-tabs">
-            <button
-              type="button"
-              className={`auth-mode-tab ${authMode === 'otp' ? 'active' : ''}`}
-              onClick={() => setAuthMode('otp')}
-            >
-              Email Code
-            </button>
-            <button
-              type="button"
-              className={`auth-mode-tab ${authMode === 'login' ? 'active' : ''}`}
-              onClick={() => setAuthMode('login')}
-            >
-              Password
-            </button>
-            <button
-              type="button"
-              className={`auth-mode-tab ${authMode === 'register' ? 'active' : ''}`}
-              onClick={() => setAuthMode('register')}
-            >
-              Register
-            </button>
-          </div>
-
-          {authMode === 'otp' && (
-            <>
-              <h2>Sign in with Code</h2>
-              <p>We'll send a 6-digit verification code to your email.</p>
-              <OtpLoginForm
-                onSuccess={(token, profile) => {
-                  handleAuthSuccess(profile, token);
-                }}
-                onSwitchToPassword={() => setAuthMode('login')}
-                onSwitchToRegister={() => setAuthMode('register')}
-                apiBaseUrl={API}
-              />
-            </>
-          )}
-
-          {authMode === 'login' && (
-            <>
-              <h2>Welcome back!</h2>
-              <p>Sign in to pick up right where you left off.</p>
-              <form onSubmit={submitAuth}>
-                <input
-                  required
-                  type="email"
-                  placeholder="Email address"
-                  value={authForm.email}
-                  onChange={e => setAuthForm({ ...authForm, email: e.target.value })}
-                />
-                <input
-                  required
-                  minLength="6"
-                  type="password"
-                  placeholder="Password (at least 6 characters)"
-                  value={authForm.password}
-                  onChange={e => setAuthForm({ ...authForm, password: e.target.value })}
-                />
-                <button className="checkout-button" disabled={loading}>
-                  {loading ? 'One moment…' : 'Sign in ↗'}
-                </button>
-              </form>
-              <div className="auth-switch">
-                Prefer passwordless? <button type="button" onClick={() => setAuthMode('otp')}>Sign in with Email Code</button>
-              </div>
-            </>
-          )}
-
-          {authMode === 'register' && (
-            <>
-              <h2>Come on in!</h2>
-              <p>Create an account for a little more convenience.</p>
-              <form onSubmit={submitAuth}>
-                <input
-                  required
-                  placeholder="Your name"
-                  value={authForm.name}
-                  onChange={e => setAuthForm({ ...authForm, name: e.target.value })}
-                />
-                <input
-                  required
-                  type="email"
-                  placeholder="Email address"
-                  value={authForm.email}
-                  onChange={e => setAuthForm({ ...authForm, email: e.target.value })}
-                />
-                <input
-                  required
-                  placeholder="Phone number (required)"
-                  value={authForm.phone}
-                  onChange={e => setAuthForm({ ...authForm, phone: e.target.value })}
-                />
-                <input
-                  required
-                  minLength="6"
-                  type="password"
-                  placeholder="Password (at least 6 characters)"
-                  value={authForm.password}
-                  onChange={e => setAuthForm({ ...authForm, password: e.target.value })}
-                />
-                <button className="checkout-button" disabled={loading}>
-                  {loading ? 'One moment…' : 'Create my account ↗'}
-                </button>
-              </form>
-              <div className="auth-switch">
-                Already have an account? <button type="button" onClick={() => setAuthMode('otp')}>Sign in with Code</button>
-              </div>
-            </>
-          )}
-
-          <small className="auth-legal">By continuing, you agree to our Terms of Service and Privacy Policy.</small>
-        </div>
-      </div>
+      <AuthFlow
+        apiBaseUrl={API}
+        onAuthSuccess={handleAuthSuccess}
+        notify={notify}
+        onClose={() => setAuthOpen(false)}
+        allowRegister={true}
+        initialTab="login"
+      />
     )}
 
     {trackingOpen && <div className="modal-wrap"><button className="modal-backdrop" onClick={closeTracking} aria-label="Close tracking"></button>
@@ -1435,14 +1249,24 @@ function App() {
 
           {/* Quick jump to authorized dashboard */}
           {user?.role === 'ADMIN' && (
-            <button
-              type="button"
-              className="checkout-button"
-              style={{ marginTop: '12px', background: '#0c831f' }}
-              onClick={() => { setAccountOpen(false); navigate('/admin'); }}
-            >
-              Open Administrator Dashboard ⚙ ↗
-            </button>
+            <>
+              <button
+                type="button"
+                className="checkout-button"
+                style={{ marginTop: '12px', background: '#0c831f' }}
+                onClick={() => { setAccountOpen(false); navigate('/admin'); }}
+              >
+                Open Administrator Dashboard ⚙ ↗
+              </button>
+              <button
+                type="button"
+                className="checkout-button"
+                style={{ marginTop: '8px', background: '#7c3aed' }}
+                onClick={() => { setAccountOpen(false); navigate('/delivery'); }}
+              >
+                Open Delivery Partner Dashboard 🚴 ↗
+              </button>
+            </>
           )}
           {user?.role === 'DELIVERY_PARTNER' && (
             <button
@@ -1683,7 +1507,7 @@ function App() {
       <button onClick={() => { navigate('/'); document.getElementById('shop')?.scrollIntoView({behavior:'smooth'}); }}><span>⌕</span>Explore</button>
       <button onClick={() => setCartOpen(true)}><span>🛍</span>Cart {cartCount ? `(${cartCount})` : ''}</button>
       {user?.role === 'ADMIN' && <button onClick={() => navigate('/admin')}><span>⚙</span>Admin</button>}
-      {user?.role === 'DELIVERY_PARTNER' && <button onClick={() => navigate('/delivery')}><span>🚴</span>Driver</button>}
+      {(user?.role === 'DELIVERY_PARTNER' || user?.role === 'ADMIN') && <button onClick={() => navigate('/delivery')}><span>🚴</span>Driver</button>}
       <button onClick={() => openAccount('profile')}><span>♙</span>Account</button>
     </nav>
   </div>;

@@ -347,4 +347,37 @@ public class EmailService {
             return false;
         }
     }
+
+    public boolean sendRegistrationCode(String to, String code, long validMinutes) {
+        if (to == null || to.isBlank() || code == null || code.isBlank()) {
+            log.warn("Cannot send registration code: email or code is empty");
+            return false;
+        }
+
+        try {
+            String subject = "Your KLICKIT Email Verification Code";
+            String escapedCode = HtmlUtils.htmlEscape(code.trim());
+            String htmlBody = "<html><body style='font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;'>"
+                    + "<h2 style='color: #2c3e50; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px;'>Your KLICKIT Email Verification Code</h2>"
+                    + "<p>Use the following 6-digit verification code to verify your email and complete your registration at KLICKIT:</p>"
+                    + "<div style='font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #16a34a; background: #f0fdf4; padding: 16px 24px; text-align: center; border-radius: 8px; margin: 24px 0;'>"
+                    + escapedCode
+                    + "</div>"
+                    + "<p style='color: #64748b; font-size: 14px;'>This code will expire in " + validMinutes + " minutes. If you did not request this verification code, you can safely ignore this email.</p>"
+                    + "<hr style='border: 1px solid #eee; margin-top: 24px;'>"
+                    + "<p style='color: #999; font-size: 12px;'>This is an automated notification from KLICKIT.</p>"
+                    + "</body></html>";
+
+            boolean success = emailClient.sendEmail(to.trim(), subject, htmlBody);
+            if (success) {
+                log.info("Successfully dispatched registration verification code email");
+            } else {
+                log.warn("Failed to dispatch registration verification code email");
+            }
+            return success;
+        } catch (Exception e) {
+            log.error("Exception while sending registration verification code email: {}", e.getMessage());
+            return false;
+        }
+    }
 }

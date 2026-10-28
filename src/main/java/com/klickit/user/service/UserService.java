@@ -88,7 +88,7 @@ public class UserService implements UserDetailsService {
         if (otpService == null) {
             throw new IllegalStateException("OTP service is currently unavailable");
         }
-        otpService.requestOtp(normalizedEmail);
+        otpService.requestOtp(normalizedEmail, OtpService.PURPOSE_REGISTRATION);
     }
 
     @Transactional
@@ -106,7 +106,7 @@ public class UserService implements UserDetailsService {
         if (otpService == null) {
             throw new IllegalStateException("OTP service is currently unavailable");
         }
-        otpService.verifyAndConsumeOtp(normalizedEmail, request.getCode());
+        otpService.verifyAndConsumeOtp(normalizedEmail, request.getCode(), OtpService.PURPOSE_REGISTRATION);
 
         User user = User.builder()
                 .name(request.getName().trim())

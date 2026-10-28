@@ -11,7 +11,7 @@ function checkRouteAccess(route, user) {
 
   if (route === '/delivery' || route.startsWith('/delivery/')) {
     if (!user) return { access: false, status: 401, reason: 'AUTH_REQUIRED' };
-    if (user.role === 'DELIVERY_PARTNER' || user.role === 'ROLE_DELIVERY_PARTNER') return { access: true };
+    if (user.role === 'DELIVERY_PARTNER' || user.role === 'ROLE_DELIVERY_PARTNER' || user.role === 'ADMIN' || user.role === 'ROLE_ADMIN') return { access: true };
     return { access: false, status: 403, reason: 'FORBIDDEN' };
   }
 
@@ -67,7 +67,7 @@ test('Route Guard: Admin route (/admin) enforces ROLE_ADMIN guard', () => {
   assert.equal(admin.access, true);
 });
 
-test('Route Guard: Delivery route (/delivery) enforces ROLE_DELIVERY_PARTNER guard', () => {
+test('Route Guard: Delivery route (/delivery) enforces ROLE_DELIVERY_PARTNER and ROLE_ADMIN guard', () => {
   // Unauthenticated user is challenged
   const unauth = checkRouteAccess('/delivery', null);
   assert.equal(unauth.access, false);
@@ -78,14 +78,13 @@ test('Route Guard: Delivery route (/delivery) enforces ROLE_DELIVERY_PARTNER gua
   assert.equal(customer.access, false);
   assert.equal(customer.status, 403);
 
-  // Admin is blocked with 403 Forbidden
-  const admin = checkRouteAccess('/delivery', { role: 'ADMIN', name: 'KlickIt Admin' });
-  assert.equal(admin.access, false);
-  assert.equal(admin.status, 403);
-
   // Delivery partner is granted access
   const driver = checkRouteAccess('/delivery', { role: 'DELIVERY_PARTNER', name: 'Aman Kumar' });
   assert.equal(driver.access, true);
+
+  // Admin is granted access to Driver Portal
+  const admin = checkRouteAccess('/delivery', { role: 'ADMIN', name: 'KlickIt Admin' });
+  assert.equal(admin.access, true);
 });
 
 test('Lifecycle Workflow: PLACED allows APPROVE (READY_TO_ASSIGN) and REJECT', () => {

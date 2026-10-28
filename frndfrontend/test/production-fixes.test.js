@@ -212,7 +212,7 @@ function determineInitialView({ currentPath, user, token }) {
     return role === 'ADMIN' ? 'ADMIN_DASHBOARD' : 'ADMIN_BARRIER_403';
   }
   if (currentPath === '/delivery' || currentPath.startsWith('/delivery/')) {
-    return role === 'DELIVERY_PARTNER' ? 'DELIVERY_DASHBOARD' : 'DELIVERY_BARRIER_403';
+    return (role === 'DELIVERY_PARTNER' || role === 'ADMIN') ? 'DELIVERY_DASHBOARD' : 'DELIVERY_BARRIER_403';
   }
   return 'STOREFRONT';
 }
@@ -287,10 +287,10 @@ test('Auth Routing: Directs roles strictly according to validated JWT claims', (
   assert.equal(determineInitialView({ currentPath: '/admin', user: { role: 'CUSTOMER' }, token: custToken }), 'ADMIN_BARRIER_403');
   assert.equal(determineInitialView({ currentPath: '/admin', user: { role: 'DELIVERY_PARTNER' }, token: driverToken }), 'ADMIN_BARRIER_403');
 
-  // Driver access
+  // Driver and Admin access
   assert.equal(determineInitialView({ currentPath: '/delivery', user: { role: 'DELIVERY_PARTNER' }, token: driverToken }), 'DELIVERY_DASHBOARD');
+  assert.equal(determineInitialView({ currentPath: '/delivery', user: { role: 'ADMIN' }, token: adminToken }), 'DELIVERY_DASHBOARD');
   assert.equal(determineInitialView({ currentPath: '/delivery', user: { role: 'CUSTOMER' }, token: custToken }), 'DELIVERY_BARRIER_403');
-  assert.equal(determineInitialView({ currentPath: '/delivery', user: { role: 'ADMIN' }, token: adminToken }), 'DELIVERY_BARRIER_403');
 });
 
 test('Registration Validation: Enforces required fields, phone digits, and minimum password length', () => {

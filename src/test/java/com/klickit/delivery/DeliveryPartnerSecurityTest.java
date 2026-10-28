@@ -69,9 +69,49 @@ class DeliveryPartnerSecurityTest {
 
     @Test
     @WithMockUser(username = "admin@klickit.com", roles = {"ADMIN"})
-    @DisplayName("ADMIN role cannot access /delivery/orders (403 Forbidden)")
-    void admin_cannotAccessDeliveryOrders() throws Exception {
+    @DisplayName("ADMIN role CAN access GET /delivery/orders (200 OK)")
+    void admin_canAccessDeliveryOrders() throws Exception {
+        when(deliveryService.getMyAssignedOrders()).thenReturn(List.of());
+
         mockMvc.perform(get("/delivery/orders"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+    }
+
+    @Test
+    @WithMockUser(username = "admin@klickit.com", roles = {"ADMIN"})
+    @DisplayName("ADMIN role CAN access GET /delivery/orders/{partnerId} (200 OK)")
+    void admin_canAccessDeliveryOrdersByPartnerId() throws Exception {
+        UUID partnerId = UUID.randomUUID();
+        when(deliveryService.getAssignedOrders(partnerId)).thenReturn(List.of());
+
+        mockMvc.perform(get("/delivery/orders/" + partnerId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+    }
+
+    @Test
+    @WithMockUser(username = "customer@test.com", roles = {"CUSTOMER"})
+    @DisplayName("CUSTOMER role cannot access GET /delivery/orders/{partnerId} (403 Forbidden)")
+    void customer_cannotAccessDeliveryOrdersByPartnerId() throws Exception {
+        UUID partnerId = UUID.randomUUID();
+        mockMvc.perform(get("/delivery/orders/" + partnerId))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "admin@klickit.com", roles = {"ADMIN"})
+    @DisplayName("ADMIN role cannot PATCH /delivery/orders/{id}/start (403 Forbidden)")
+    void admin_cannotStartDelivery() throws Exception {
+        mockMvc.perform(patch("/delivery/orders/" + UUID.randomUUID() + "/start"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "admin@klickit.com", roles = {"ADMIN"})
+    @DisplayName("ADMIN role cannot PATCH /delivery/orders/{id}/delivered (403 Forbidden)")
+    void admin_cannotMarkDelivered() throws Exception {
+        mockMvc.perform(patch("/delivery/orders/" + UUID.randomUUID() + "/delivered"))
                 .andExpect(status().isForbidden());
     }
 

@@ -57,14 +57,14 @@ class OtpAuthControllerSecurityTest {
     @DisplayName("POST /auth/otp/request with valid email succeeds with 200 OK")
     void requestOtp_validEmail_succeeds() throws Exception {
         OtpRequest request = new OtpRequest("user@example.com");
-        doNothing().when(otpService).requestOtp("user@example.com");
+        doNothing().when(otpService).requestOtp("user@example.com", OtpService.PURPOSE_LOGIN);
 
         mockMvc.perform(post("/auth/otp/request")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.message").value("If the email is valid, a sign-in code has been sent"));
+                .andExpect(jsonPath("$.message").value("If this email is registered, we've sent a sign-in code."));
     }
 
     @Test
@@ -84,7 +84,7 @@ class OtpAuthControllerSecurityTest {
     void requestOtp_rateLimited_returns429() throws Exception {
         OtpRequest request = new OtpRequest("user@example.com");
         doThrow(new OtpRateLimitException("Please wait before requesting another sign-in code"))
-                .when(otpService).requestOtp("user@example.com");
+                .when(otpService).requestOtp("user@example.com", OtpService.PURPOSE_LOGIN);
 
         mockMvc.perform(post("/auth/otp/request")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -99,7 +99,7 @@ class OtpAuthControllerSecurityTest {
     void requestOtp_emailProviderFailure_returns400() throws Exception {
         OtpRequest request = new OtpRequest("user@example.com");
         doThrow(new IllegalStateException("Failed to send sign-in code. Please try again later"))
-                .when(otpService).requestOtp("user@example.com");
+                .when(otpService).requestOtp("user@example.com", OtpService.PURPOSE_LOGIN);
 
         mockMvc.perform(post("/auth/otp/request")
                         .contentType(MediaType.APPLICATION_JSON)
