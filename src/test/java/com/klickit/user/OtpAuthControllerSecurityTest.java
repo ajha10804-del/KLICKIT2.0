@@ -98,7 +98,7 @@ class OtpAuthControllerSecurityTest {
     @DisplayName("POST /auth/otp/request when email provider fails returns 400 Bad Request without misleading success")
     void requestOtp_emailProviderFailure_returns400() throws Exception {
         OtpRequest request = new OtpRequest("user@example.com");
-        doThrow(new IllegalStateException("Failed to send sign-in code. Please try again later"))
+        doThrow(new IllegalStateException("We couldn't send the code. Please try again."))
                 .when(otpService).requestOtp("user@example.com", OtpService.PURPOSE_LOGIN);
 
         mockMvc.perform(post("/auth/otp/request")
@@ -106,7 +106,7 @@ class OtpAuthControllerSecurityTest {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.message").value("Failed to send sign-in code. Please try again later"));
+                .andExpect(jsonPath("$.message").value("We couldn't send the code. Please try again."));
     }
 
     @Test

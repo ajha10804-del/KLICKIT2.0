@@ -40,6 +40,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.when;
 
 @SpringBootTest
@@ -84,7 +85,7 @@ class OtpConcurrencyIntegrationTest {
             userRepository.save(testUser);
             return null;
         });
-        when(emailService.sendLoginCode(anyString(), anyString(), anyLong())).thenReturn(true);
+        doNothing().when(emailService).sendOtpEmail(anyString(), anyString(), anyString(), anyLong());
     }
 
     @AfterEach

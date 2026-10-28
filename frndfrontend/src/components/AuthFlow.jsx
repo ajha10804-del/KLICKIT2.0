@@ -89,11 +89,17 @@ export default function AuthFlow({
     const resUser = data.data?.user || data.user || data.data || {};
     const authoritativeRole = tokenRole || resUser.role || 'CUSTOMER';
 
+    const resolvedUserId = resUser.userId || resUser.id || null;
+    const resolvedPhone = resUser.phone || fallbackPhone || '';
+    const resolvedEmail = resUser.email || fallbackEmail;
+    const resolvedName = resUser.name || fallbackName || (resolvedEmail ? resolvedEmail.split('@')[0] : 'Customer');
+
     const profile = {
-      userId: resUser.userId || resUser.id || null,
-      name: resUser.name || fallbackName || fallbackEmail.split('@')[0],
-      email: resUser.email || fallbackEmail,
-      phone: resUser.phone || fallbackPhone || '',
+      userId: resolvedUserId,
+      id: resolvedUserId,
+      name: resolvedName,
+      email: resolvedEmail,
+      phone: resolvedPhone,
       role: authoritativeRole
     };
 
@@ -205,7 +211,10 @@ export default function AuthFlow({
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        throw new Error(data.message || data.error || 'Invalid or expired code.');
+        if (res.status === 401) {
+          throw new Error('Invalid or expired code');
+        }
+        throw new Error(data.message || data.error || 'Invalid or expired code');
       }
 
       completeAuth(data, cleanEmail);
@@ -308,7 +317,10 @@ export default function AuthFlow({
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        throw new Error(data.message || data.error || 'Invalid or expired verification code.');
+        if (res.status === 401) {
+          throw new Error('Invalid or expired verification code');
+        }
+        throw new Error(data.message || data.error || 'Invalid or expired verification code');
       }
 
       notify('Account verified successfully!');

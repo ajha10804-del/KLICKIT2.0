@@ -41,6 +41,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -114,7 +115,6 @@ class OtpServiceTest {
     void requestOtp_success() {
         when(otpCodeRepository.findFirstByEmailOrderByCreatedAtDesc(TEST_EMAIL)).thenReturn(Optional.empty());
         when(otpCodeRepository.countByEmailAndCreatedAtAfter(eq(TEST_EMAIL), any(Instant.class))).thenReturn(0L);
-        when(emailService.sendLoginCode(eq(TEST_EMAIL), anyString(), eq(5L))).thenReturn(true);
 
         otpService.requestOtp(TEST_EMAIL);
 
@@ -130,7 +130,7 @@ class OtpServiceTest {
         assertThat(saved.getConsumedAt()).isNull();
         assertThat(saved.getExpiresAt()).isAfter(Instant.now());
 
-        verify(emailService).sendLoginCode(eq(TEST_EMAIL), anyString(), eq(5L));
+        verify(emailService).sendOtpEmail(eq(TEST_EMAIL), anyString(), eq(OtpService.PURPOSE_LOGIN), eq(5L));
     }
 
     @Test
@@ -148,7 +148,7 @@ class OtpServiceTest {
                 .hasMessageContaining("wait before requesting another");
 
         verify(otpCodeRepository, never()).save(any());
-        verify(emailService, never()).sendLoginCode(anyString(), anyString(), anyLong());
+        verify(emailService, never()).sendOtpEmail(anyString(), anyString(), anyString(), anyLong());
     }
 
     @Test
@@ -169,12 +169,13 @@ class OtpServiceTest {
     void requestOtp_emailFailureDeletesUnusableOtp() {
         when(otpCodeRepository.findFirstByEmailOrderByCreatedAtDesc(TEST_EMAIL)).thenReturn(Optional.empty());
         when(otpCodeRepository.countByEmailAndCreatedAtAfter(eq(TEST_EMAIL), any(Instant.class))).thenReturn(0L);
-        when(emailService.sendLoginCode(eq(TEST_EMAIL), anyString(), eq(5L))).thenReturn(false);
+        doThrow(new IllegalStateException("Provider delivery failed"))
+                .when(emailService).sendOtpEmail(eq(TEST_EMAIL), anyString(), eq(OtpService.PURPOSE_LOGIN), eq(5L));
 
-        // Throws IllegalStateException to prevent misleading success response
+        // Throws IllegalStateException with generic message to prevent misleading success response
         assertThatThrownBy(() -> otpService.requestOtp(TEST_EMAIL))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("Failed to send sign-in code");
+                .hasMessage("We couldn't send the code. Please try again.");
 
         verify(otpCodeRepository).save(any(OtpCode.class));
         verify(otpCodeRepository).delete(any(OtpCode.class));
@@ -183,7 +184,6 @@ class OtpServiceTest {
     @Test
     @DisplayName("Concurrent OTP requests for the same email: only one succeeds, others fail rate-limit cooldown")
     void requestOtp_concurrencySerializedPerEmail() throws Exception {
-        when(emailService.sendLoginCode(eq(TEST_EMAIL), anyString(), eq(5L))).thenReturn(true);
         when(otpCodeRepository.countByEmailAndCreatedAtAfter(eq(TEST_EMAIL), any(Instant.class))).thenReturn(0L);
 
         AtomicInteger lookupCount = new AtomicInteger(0);
@@ -233,7 +233,7 @@ class OtpServiceTest {
 
         assertThat(successCount.get()).isEqualTo(1);
         assertThat(rateLimitedCount.get()).isEqualTo(numThreads - 1);
-        verify(emailService, times(1)).sendLoginCode(eq(TEST_EMAIL), anyString(), anyLong());
+        verify(emailService, times(1)).sendOtpEmail(eq(TEST_EMAIL), anyString(), eq(OtpService.PURPOSE_LOGIN), anyLong());
     }
 
     @Test
@@ -359,7 +359,7 @@ class OtpServiceTest {
         otpService.requestOtp(unknownEmail);
 
         verify(otpCodeRepository, never()).save(any());
-        verify(emailService, never()).sendLoginCode(anyString(), anyString(), anyLong());
+        verify(emailService, never()).sendOtpEmail(anyString(), anyString(), anyString(), anyLong());
     }
 
     @Test
@@ -377,7 +377,7 @@ class OtpServiceTest {
         otpService.requestOtp(adminEmail);
 
         verify(otpCodeRepository, never()).save(any());
-        verify(emailService, never()).sendLoginCode(anyString(), anyString(), anyLong());
+        verify(emailService, never()).sendOtpEmail(anyString(), anyString(), anyString(), anyLong());
     }
 
     @Test
@@ -395,7 +395,7 @@ class OtpServiceTest {
         otpService.requestOtp(driverEmail);
 
         verify(otpCodeRepository, never()).save(any());
-        verify(emailService, never()).sendLoginCode(anyString(), anyString(), anyLong());
+        verify(emailService, never()).sendOtpEmail(anyString(), anyString(), anyString(), anyLong());
     }
 
     @Test

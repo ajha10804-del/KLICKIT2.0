@@ -155,25 +155,20 @@ public class OtpService {
             otpCodeRepository.save(otp);
 
             // 5. Send email with purpose-separated wording
-            boolean isRegistration = PURPOSE_REGISTRATION.equals(normPurpose);
-            boolean sent = isRegistration
-                    ? emailService.sendRegistrationCode(normalizedEmail, code, ttlMinutes)
-                    : emailService.sendLoginCode(normalizedEmail, code, ttlMinutes);
-
-            if (!sent) {
+            try {
+                emailService.sendOtpEmail(normalizedEmail, code, normPurpose, ttlMinutes);
+                if (devLogCode) {
+                    log.info("[DEV ONLY] {} OTP code for {}: {}", normPurpose, normalizedEmail, code);
+                }
+            } catch (Exception e) {
                 if (devLogCode) {
                     log.info("[DEV ONLY] {} OTP code for {}: {} (email delivery skipped: local dev mode)",
                             normPurpose, normalizedEmail, code);
                 } else {
-                    log.error("Failed to send OTP {} email to {}", normPurpose, normalizedEmail);
+                    log.error("Failed to send OTP {} email to {}: {}", normPurpose, normalizedEmail, e.getMessage());
                     otpCodeRepository.delete(otp);
-                    String failMsg = isRegistration
-                            ? "Failed to send verification code. Please try again later"
-                            : "Failed to send sign-in code. Please try again later";
-                    throw new IllegalStateException(failMsg);
+                    throw new IllegalStateException("We couldn't send the code. Please try again.");
                 }
-            } else if (devLogCode) {
-                log.info("[DEV ONLY] {} OTP code for {}: {}", normPurpose, normalizedEmail, code);
             }
         }
     }

@@ -1,6 +1,7 @@
 package com.klickit.common.exception;
 
 import com.klickit.common.dto.ApiResponse;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -110,6 +111,18 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
                 .body(ApiResponse.error("Validation error: " + ex.getReason()));
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDataIntegrityViolation(
+            DataIntegrityViolationException ex,
+            jakarta.servlet.http.HttpServletRequest request) {
+        String method = request != null ? request.getMethod() : "N/A";
+        String uri = request != null ? request.getRequestURI() : "N/A";
+        log.warn("Database constraint violation at [method={}] [uri={}]", method, uri);
+        return ResponseEntity
+                .status(HttpStatus.CONFLICT)
+                .body(ApiResponse.error("The request conflicts with existing data."));
     }
 
     @ExceptionHandler(Exception.class)

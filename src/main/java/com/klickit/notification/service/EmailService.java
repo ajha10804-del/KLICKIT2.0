@@ -315,68 +315,68 @@ public class EmailService {
         sb.append("</tr>");
     }
 
-    public boolean sendLoginCode(String to, String code, long validMinutes) {
+    public void sendOtpEmail(String to, String code, String purpose, long validMinutes) {
         if (to == null || to.isBlank() || code == null || code.isBlank()) {
-            log.warn("Cannot send login code: email or code is empty");
-            return false;
+            log.warn("Cannot send OTP email: email or code is empty");
+            throw new IllegalArgumentException("Email and code must not be empty");
         }
 
-        try {
-            String subject = "Your KLICKIT Sign-in Code";
-            String escapedCode = HtmlUtils.htmlEscape(code.trim());
-            String htmlBody = "<html><body style='font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;'>"
-                    + "<h2 style='color: #2c3e50; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px;'>Your KLICKIT Sign-in Code</h2>"
-                    + "<p>Use the following 6-digit verification code to sign in to your KLICKIT account:</p>"
-                    + "<div style='font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #2563eb; background: #eff6ff; padding: 16px 24px; text-align: center; border-radius: 8px; margin: 24px 0;'>"
-                    + escapedCode
-                    + "</div>"
-                    + "<p style='color: #64748b; font-size: 14px;'>This code will expire in " + validMinutes + " minutes. If you did not request this code, you can safely ignore this email.</p>"
-                    + "<hr style='border: 1px solid #eee; margin-top: 24px;'>"
-                    + "<p style='color: #999; font-size: 12px;'>This is an automated notification from KLICKIT.</p>"
-                    + "</body></html>";
+        boolean isRegistration = "REGISTRATION".equalsIgnoreCase(purpose);
+        String subject = isRegistration ? "Your KLICKIT Email Verification Code" : "Your KLICKIT Sign-in Code";
+        String title = isRegistration ? "Your KLICKIT Email Verification Code" : "Your KLICKIT Sign-in Code";
+        String description = isRegistration
+                ? "Use the following 6-digit verification code to verify your email and complete your registration at KLICKIT:"
+                : "Use the following 6-digit verification code to sign in to your KLICKIT account:";
+        String color = isRegistration ? "#16a34a" : "#2563eb";
+        String bg = isRegistration ? "#f0fdf4" : "#eff6ff";
+        String codeDesc = isRegistration ? "verification code" : "code";
 
-            boolean success = emailClient.sendEmail(to.trim(), subject, htmlBody);
-            if (success) {
-                log.info("Successfully dispatched login code email");
-            } else {
-                log.warn("Failed to dispatch login code email");
-            }
-            return success;
+        String escapedCode = HtmlUtils.htmlEscape(code.trim());
+        String htmlBody = "<html><body style='font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;'>"
+                + "<h2 style='color: #2c3e50; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px;'>" + title + "</h2>"
+                + "<p>" + description + "</p>"
+                + "<div style='font-size: 32px; font-weight: bold; letter-spacing: 6px; color: " + color + "; background: " + bg + "; padding: 16px 24px; text-align: center; border-radius: 8px; margin: 24px 0;'>"
+                + escapedCode
+                + "</div>"
+                + "<p style='color: #64748b; font-size: 14px;'>This code will expire in " + validMinutes + " minutes. If you did not request this " + codeDesc + ", you can safely ignore this email.</p>"
+                + "<hr style='border: 1px solid #eee; margin-top: 24px;'>"
+                + "<p style='color: #999; font-size: 12px;'>This is an automated notification from KLICKIT.</p>"
+                + "</body></html>";
+
+        boolean success;
+        try {
+            success = emailClient.sendEmail(to.trim(), subject, htmlBody);
         } catch (Exception e) {
-            log.error("Exception while sending login code email: {}", e.getMessage());
+            log.error("Transactional email provider threw exception while sending OTP email: {}", e.getMessage());
+            throw new IllegalStateException("Transactional email provider error", e);
+        }
+
+        if (!success) {
+            log.error("Transactional email client failed to deliver OTP email to {}", to.trim());
+            throw new IllegalStateException("Email delivery failed: provider returned non-success");
+        }
+
+        log.info("Successfully dispatched {} OTP email", purpose != null ? purpose.trim() : "LOGIN");
+    }
+
+    public void sendOtpEmail(String to, String code, String purpose) {
+        sendOtpEmail(to, code, purpose, 5L);
+    }
+
+    public boolean sendLoginCode(String to, String code, long validMinutes) {
+        try {
+            sendOtpEmail(to, code, "LOGIN", validMinutes);
+            return true;
+        } catch (Exception e) {
             return false;
         }
     }
 
     public boolean sendRegistrationCode(String to, String code, long validMinutes) {
-        if (to == null || to.isBlank() || code == null || code.isBlank()) {
-            log.warn("Cannot send registration code: email or code is empty");
-            return false;
-        }
-
         try {
-            String subject = "Your KLICKIT Email Verification Code";
-            String escapedCode = HtmlUtils.htmlEscape(code.trim());
-            String htmlBody = "<html><body style='font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;'>"
-                    + "<h2 style='color: #2c3e50; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px;'>Your KLICKIT Email Verification Code</h2>"
-                    + "<p>Use the following 6-digit verification code to verify your email and complete your registration at KLICKIT:</p>"
-                    + "<div style='font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #16a34a; background: #f0fdf4; padding: 16px 24px; text-align: center; border-radius: 8px; margin: 24px 0;'>"
-                    + escapedCode
-                    + "</div>"
-                    + "<p style='color: #64748b; font-size: 14px;'>This code will expire in " + validMinutes + " minutes. If you did not request this verification code, you can safely ignore this email.</p>"
-                    + "<hr style='border: 1px solid #eee; margin-top: 24px;'>"
-                    + "<p style='color: #999; font-size: 12px;'>This is an automated notification from KLICKIT.</p>"
-                    + "</body></html>";
-
-            boolean success = emailClient.sendEmail(to.trim(), subject, htmlBody);
-            if (success) {
-                log.info("Successfully dispatched registration verification code email");
-            } else {
-                log.warn("Failed to dispatch registration verification code email");
-            }
-            return success;
+            sendOtpEmail(to, code, "REGISTRATION", validMinutes);
+            return true;
         } catch (Exception e) {
-            log.error("Exception while sending registration verification code email: {}", e.getMessage());
             return false;
         }
     }

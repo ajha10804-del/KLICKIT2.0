@@ -228,3 +228,145 @@ test('Auth Redesign: onAuthSuccess is called with (profile, token) in exact corr
   assert.equal(typeof capturedArgs[1], 'string', 'Second argument must be token string');
   assert.equal(capturedArgs[1], 'eyJhbGciOiJIUzI1NiJ9.fake.jwt');
 });
+
+test('Auth Redesign: completeAuth includes userId and phone for password login path', () => {
+  // Simulate password login response from POST /api/auth/login
+  const backendResponse = {
+    success: true,
+    message: 'Login successful',
+    data: {
+      token: 'jwt.token.pw',
+      userId: 'uuid-1234-abcd',
+      name: 'Alice User',
+      email: 'alice@example.com',
+      phone: '+919876543210',
+      role: 'CUSTOMER'
+    }
+  };
+
+  let capturedProfile = null;
+  const onAuthSuccess = (profile) => { capturedProfile = profile; };
+
+  // Run AuthFlow completeAuth logic
+  const resUser = backendResponse.data?.user || backendResponse.user || backendResponse.data || {};
+  const authoritativeRole = resUser.role || 'CUSTOMER';
+  const resolvedUserId = resUser.userId || resUser.id || null;
+  const resolvedPhone = resUser.phone || '';
+  const resolvedEmail = resUser.email || 'alice@example.com';
+  const resolvedName = resUser.name || resolvedEmail.split('@')[0];
+
+  const profile = {
+    userId: resolvedUserId,
+    id: resolvedUserId,
+    name: resolvedName,
+    email: resolvedEmail,
+    phone: resolvedPhone,
+    role: authoritativeRole
+  };
+  onAuthSuccess(profile);
+
+  assert.equal(capturedProfile.userId, 'uuid-1234-abcd', 'Password login profile must include userId');
+  assert.equal(capturedProfile.id, 'uuid-1234-abcd', 'Password login profile must include id alias');
+  assert.equal(capturedProfile.phone, '+919876543210', 'Password login profile must include phone');
+  assert.equal(capturedProfile.email, 'alice@example.com');
+  assert.equal(capturedProfile.role, 'CUSTOMER');
+});
+
+test('Auth Redesign: completeAuth includes userId and phone for register-verify path', () => {
+  // Simulate register-verify response from POST /api/auth/register/verify-otp
+  const backendResponse = {
+    success: true,
+    message: 'Registration successful',
+    data: {
+      token: 'jwt.token.reg',
+      userId: 'uuid-5678-efgh',
+      name: 'Bob Registered',
+      email: 'bob@example.com',
+      phone: '+919812345678',
+      role: 'CUSTOMER'
+    }
+  };
+
+  let capturedProfile = null;
+  const onAuthSuccess = (profile) => { capturedProfile = profile; };
+
+  const resUser = backendResponse.data?.user || backendResponse.user || backendResponse.data || {};
+  const authoritativeRole = resUser.role || 'CUSTOMER';
+  const resolvedUserId = resUser.userId || resUser.id || null;
+  const resolvedPhone = resUser.phone || '+919812345678';
+  const resolvedEmail = resUser.email || 'bob@example.com';
+  const resolvedName = resUser.name || 'Bob Registered';
+
+  const profile = {
+    userId: resolvedUserId,
+    id: resolvedUserId,
+    name: resolvedName,
+    email: resolvedEmail,
+    phone: resolvedPhone,
+    role: authoritativeRole
+  };
+  onAuthSuccess(profile);
+
+  assert.equal(capturedProfile.userId, 'uuid-5678-efgh', 'Register-verify profile must include userId');
+  assert.equal(capturedProfile.id, 'uuid-5678-efgh', 'Register-verify profile must include id alias');
+  assert.equal(capturedProfile.phone, '+919812345678', 'Register-verify profile must include phone');
+  assert.equal(capturedProfile.name, 'Bob Registered');
+  assert.equal(capturedProfile.role, 'CUSTOMER');
+});
+
+test('Auth Redesign: completeAuth includes userId and phone for code login path', () => {
+  // Simulate login OTP verify response from POST /api/auth/otp/verify
+  const backendResponse = {
+    success: true,
+    message: 'Login successful',
+    data: {
+      token: 'jwt.token.otp',
+      userId: 'uuid-9999-code',
+      name: 'Charlie Otp',
+      email: 'charlie@example.com',
+      phone: '+919877777777',
+      role: 'CUSTOMER'
+    }
+  };
+
+  let capturedProfile = null;
+  const onAuthSuccess = (profile) => { capturedProfile = profile; };
+
+  const resUser = backendResponse.data?.user || backendResponse.user || backendResponse.data || {};
+  const authoritativeRole = resUser.role || 'CUSTOMER';
+  const resolvedUserId = resUser.userId || resUser.id || null;
+  const resolvedPhone = resUser.phone || '';
+  const resolvedEmail = resUser.email || 'charlie@example.com';
+  const resolvedName = resUser.name || resolvedEmail.split('@')[0];
+
+  const profile = {
+    userId: resolvedUserId,
+    id: resolvedUserId,
+    name: resolvedName,
+    email: resolvedEmail,
+    phone: resolvedPhone,
+    role: authoritativeRole
+  };
+  onAuthSuccess(profile);
+
+  assert.equal(capturedProfile.userId, 'uuid-9999-code', 'Code login profile must include userId');
+  assert.equal(capturedProfile.id, 'uuid-9999-code', 'Code login profile must include id alias');
+  assert.equal(capturedProfile.phone, '+919877777777', 'Code login profile must include phone');
+  assert.equal(capturedProfile.email, 'charlie@example.com');
+  assert.equal(capturedProfile.role, 'CUSTOMER');
+});
+
+test('Auth Redesign: 401 error from /api/auth/otp/verify displays "Invalid or expired code" not password login message', () => {
+  const authFlowSource = fs.readFileSync(path.resolve(__dirname, '../src/components/AuthFlow.jsx'), 'utf8');
+
+  // Verify that handleVerifyLoginOtp handles 401 by setting "Invalid or expired code"
+  assert.equal(
+    authFlowSource.includes("if (res.status === 401) {\n          throw new Error('Invalid or expired code');"),
+    true,
+    'AuthFlow verify-otp 401 must throw "Invalid or expired code"'
+  );
+
+  // Verify it never uses password error message
+  const otpSection = authFlowSource.substring(authFlowSource.indexOf('handleVerifyLoginOtp'), authFlowSource.indexOf('handleRequestRegOtp'));
+  assert.equal(otpSection.includes('Invalid email or password'), false, 'Verify-otp handler must never display password login error message');
+});

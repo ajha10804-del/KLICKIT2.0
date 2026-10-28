@@ -207,18 +207,31 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
-    @DisplayName("Non-user DataIntegrityViolationException falls through to handleGeneral and does not return account message")
-    void handleDataIntegrityViolation_nonUserConstraint_returnsGenericUnexpectedError() {
+    @DisplayName("DataIntegrityViolationException returns HTTP 409 Conflict with neutral message and does not expose account message")
+    void handleDataIntegrityViolation_returns409ConflictWithNeutralMessage() {
         org.springframework.dao.DataIntegrityViolationException ex =
                 new org.springframework.dao.DataIntegrityViolationException("duplicate key value violates unique constraint 'orders_pkey'");
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/orders");
 
-        ResponseEntity<ApiResponse<Void>> response = handler.handleGeneral(ex, request);
+        ResponseEntity<ApiResponse<Void>> response = handler.handleDataIntegrityViolation(ex, request);
 
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
         assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().getMessage()).isEqualTo("An unexpected error occurred");
+        assertThat(response.getBody().getMessage()).isEqualTo("The request conflicts with existing data.");
         assertThat(response.getBody().getMessage()).doesNotContain("account");
         assertThat(response.getBody().getMessage()).doesNotContain("An account with these details already exists");
+    }
+
+    @Test
+    @DisplayName("Registration duplicate account IllegalStateException returns HTTP 400 Bad Request with account exists message")
+    void handleIllegalState_registrationDuplicate_returns400WithAccountExistsMessage() {
+        IllegalStateException ex = new IllegalStateException("An account with these details already exists");
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/auth/register/verify-otp");
+
+        ResponseEntity<ApiResponse<Void>> response = handler.handleIllegalState(ex);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getMessage()).isEqualTo("An account with these details already exists");
     }
 }
