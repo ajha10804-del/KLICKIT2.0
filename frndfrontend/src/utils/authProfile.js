@@ -7,7 +7,7 @@
  * Helper to safely extract role claim from JWT token.
  * Compatible with both browser (atob) and Node.js (Buffer) runtime environments.
  *
- * @param {string} token 
+ * @param {string} token
  * @returns {string|null} role claim (e.g., 'ADMIN', 'DELIVERY_PARTNER', 'CUSTOMER') or null
  */
 export function getRoleFromToken(token) {
