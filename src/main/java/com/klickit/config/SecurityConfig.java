@@ -28,7 +28,10 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.Collections;
 import java.util.List;
 
@@ -45,6 +48,14 @@ public class SecurityConfig {
 
     @Value("${klickit.cors.allowed-origins:}")
     private String allowedOrigins;
+
+    private static final List<String> TRUSTED_PRODUCTION_ORIGINS = List.of(
+            "https://klickit-iycniu6bm-ajha10804-3583.vercel.app",
+            "https://klickit-ajha10804-3583.vercel.app",
+            "https://klickit.vercel.app",
+            "https://klickit-gar0xgcu7-ajha10804-3583.vercel.app"
+    );
+
 
     public SecurityConfig(
             JwtAuthenticationFilter jwtAuthFilter,
@@ -72,6 +83,9 @@ public class SecurityConfig {
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
+                        // Permit CORS preflight requests across all endpoints
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+
                         // Public authentication endpoints
                         .requestMatchers("/auth/**").permitAll()
 
@@ -161,19 +175,16 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        List<String> origins = Collections.emptyList();
+        Set<String> origins = new LinkedHashSet<>(TRUSTED_PRODUCTION_ORIGINS);
         if (allowedOrigins != null && !allowedOrigins.isBlank()) {
-            origins = Arrays.stream(allowedOrigins.split(","))
+            Arrays.stream(allowedOrigins.split(","))
                     .map(String::trim)
                     .filter(s -> !s.isEmpty())
                     .map(s -> s.replaceAll("/+$", ""))
-                    .distinct()
-                    .toList();
+                    .forEach(origins::add);
         }
 
-        if (!origins.isEmpty()) {
-            configuration.setAllowedOrigins(origins);
-        }
+        configuration.setAllowedOrigins(new ArrayList<>(origins));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Requested-With", "Accept", "Origin"));
         configuration.setExposedHeaders(List.of("Authorization"));

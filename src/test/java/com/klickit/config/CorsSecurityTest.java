@@ -9,6 +9,8 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import org.springframework.http.MediaType;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -51,5 +53,41 @@ class CorsSecurityTest {
                 .andExpect(status().isOk())
                 .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, "http://localhost:5173"))
                 .andExpect(header().doesNotExist(HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS));
+    }
+    @Test
+    @DisplayName("CORS preflight request from new production Vercel origin succeeds")
+    void corsPreflight_newProductionVercelOrigin_succeeds() throws Exception {
+        mockMvc.perform(options("/auth/login")
+                        .header(HttpHeaders.ORIGIN, "https://klickit-iycniu6bm-ajha10804-3583.vercel.app")
+                        .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "POST")
+                        .header(HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS, "content-type"))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, "https://klickit-iycniu6bm-ajha10804-3583.vercel.app"))
+                .andExpect(header().doesNotExist(HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS))
+                .andExpect(header().exists(HttpHeaders.ACCESS_CONTROL_ALLOW_METHODS))
+                .andExpect(header().exists(HttpHeaders.ACCESS_CONTROL_ALLOW_HEADERS));
+    }
+
+    @Test
+    @DisplayName("CORS preflight request on secured endpoint succeeds without authentication")
+    void corsPreflight_securedEndpoint_succeedsWithoutAuth() throws Exception {
+        mockMvc.perform(options("/orders/checkout")
+                        .header(HttpHeaders.ORIGIN, "https://klickit-iycniu6bm-ajha10804-3583.vercel.app")
+                        .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "POST")
+                        .header(HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS, "Authorization,Content-Type"))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, "https://klickit-iycniu6bm-ajha10804-3583.vercel.app"))
+                .andExpect(header().doesNotExist(HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS));
+    }
+
+    @Test
+    @DisplayName("Actual POST to auth endpoint from allowed origin without credentials returns validation error, not CORS 403")
+    void authEndpoint_withoutValidCredentials_returnsValidationFailureNotCors403() throws Exception {
+        mockMvc.perform(post("/auth/login")
+                        .header(HttpHeaders.ORIGIN, "https://klickit-iycniu6bm-ajha10804-3583.vercel.app")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"\",\"password\":\"\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, "https://klickit-iycniu6bm-ajha10804-3583.vercel.app"));
     }
 }
