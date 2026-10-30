@@ -353,6 +353,8 @@ function App() {
     setUser(null);
     setAccountOpen(false);
     setEditingPhone(false);
+    setTrackingOpen(false);
+    setActiveOrder(null);
     notify('Signed out successfully.');
     navigate('/');
   }

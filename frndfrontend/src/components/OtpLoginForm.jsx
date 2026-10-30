@@ -1,4 +1,26 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { buildAuthProfile } from '../utils/authProfile.js';
+
+const AUTH_TIMEOUT_MS = 30000;
+const TIMEOUT_FALLBACK_MESSAGE = 'The server is taking too long or is unavailable. Please try again in a minute.';
+
+async function parseResponseBody(res) {
+  try {
+    const contentType = res.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      return await res.json().catch(() => ({}));
+    }
+    const text = await res.text().catch(() => '');
+    if (!text) return {};
+    try {
+      return JSON.parse(text);
+    } catch {
+      return {};
+    }
+  } catch {
+    return {};
+  }
+}
 
 export default function OtpLoginForm({
   onSuccess,
@@ -12,6 +34,22 @@ export default function OtpLoginForm({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [cooldown, setCooldown] = useState(0);
+
+  // Lifecycle & submission locks
+  const isMountedRef = useRef(true);
+  const isSubmittingRef = useRef(false);
+  const activeAbortRef = useRef(null);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      if (activeAbortRef.current) {
+        activeAbortRef.current.abort();
+        activeAbortRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     let timer;
@@ -29,40 +67,73 @@ export default function OtpLoginForm({
 
   async function handleRequestCode(e) {
     if (e) e.preventDefault();
+    if (isSubmittingRef.current) return;
+
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail || !cleanEmail.includes('@')) {
       setError('Please enter a valid email address.');
       return;
     }
 
+    isSubmittingRef.current = true;
     setLoading(true);
     setError('');
+
+    const controller = new AbortController();
+    activeAbortRef.current = controller;
+    let timedOut = false;
+    const timeoutId = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, AUTH_TIMEOUT_MS);
 
     try {
       const res = await fetch(`${apiPrefix}/api/auth/otp/request`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: cleanEmail })
+        body: JSON.stringify({ email: cleanEmail }),
+        signal: controller.signal
       });
-      const data = await res.json().catch(() => ({}));
+      const data = await parseResponseBody(res);
 
       if (!res.ok) {
-        throw new Error(data.message || data.error || 'Failed to send sign-in code. Please try again.');
+        throw new Error(data.message || data.error || (res.status >= 500 ? TIMEOUT_FALLBACK_MESSAGE : 'Failed to send sign-in code. Please try again.'));
       }
 
-      setStep('verify');
-      setCooldown(60);
+      if (isMountedRef.current) {
+        setStep('verify');
+        setCooldown(60);
+      }
     } catch (err) {
-      setError(err.message === 'Failed to fetch'
-        ? 'Could not connect to the server. Please check your network.'
-        : err.message);
+      if (!isMountedRef.current) return;
+      if (timedOut) {
+        setError(TIMEOUT_FALLBACK_MESSAGE);
+        return;
+      }
+      if (err.name === 'AbortError') {
+        return;
+      }
+      if (err.message === 'Failed to fetch') {
+        setError(TIMEOUT_FALLBACK_MESSAGE);
+        return;
+      }
+      setError(err.message);
     } finally {
-      setLoading(false);
+      clearTimeout(timeoutId);
+      if (activeAbortRef.current === controller) {
+        activeAbortRef.current = null;
+      }
+      isSubmittingRef.current = false;
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
   }
 
   async function handleVerifyCode(e) {
     if (e) e.preventDefault();
+    if (isSubmittingRef.current) return;
+
     const cleanEmail = email.trim().toLowerCase();
     const cleanCode = code.trim();
 
@@ -71,44 +142,59 @@ export default function OtpLoginForm({
       return;
     }
 
+    isSubmittingRef.current = true;
     setLoading(true);
     setError('');
+
+    const controller = new AbortController();
+    activeAbortRef.current = controller;
+    let timedOut = false;
+    const timeoutId = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, AUTH_TIMEOUT_MS);
 
     try {
       const res = await fetch(`${apiPrefix}/api/auth/otp/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: cleanEmail, code: cleanCode })
+        body: JSON.stringify({ email: cleanEmail, code: cleanCode }),
+        signal: controller.signal
       });
-      const data = await res.json().catch(() => ({}));
+      const data = await parseResponseBody(res);
 
       if (!res.ok) {
-        throw new Error(data.message || data.error || 'Invalid or expired code.');
+        throw new Error(data.message || data.error || (res.status >= 500 ? TIMEOUT_FALLBACK_MESSAGE : 'Invalid or expired code.'));
       }
 
-      const token = data.data?.token || data.token;
-      if (!token) {
-        throw new Error('Authentication token missing in response.');
-      }
-
-      const resUser = data.data?.user || data.data || {};
-      const profile = {
-        userId: resUser.userId || null,
-        name: resUser.name || cleanEmail.split('@')[0],
-        email: resUser.email || cleanEmail,
-        phone: resUser.phone || '',
-        role: resUser.role || 'CUSTOMER'
-      };
+      const { profile, token } = buildAuthProfile(data, cleanEmail);
 
       if (onSuccess) {
         onSuccess(token, profile);
       }
     } catch (err) {
-      setError(err.message === 'Failed to fetch'
-        ? 'Could not connect to the server. Please check your network.'
-        : err.message);
+      if (!isMountedRef.current) return;
+      if (timedOut) {
+        setError(TIMEOUT_FALLBACK_MESSAGE);
+        return;
+      }
+      if (err.name === 'AbortError') {
+        return;
+      }
+      if (err.message === 'Failed to fetch') {
+        setError(TIMEOUT_FALLBACK_MESSAGE);
+        return;
+      }
+      setError(err.message);
     } finally {
-      setLoading(false);
+      clearTimeout(timeoutId);
+      if (activeAbortRef.current === controller) {
+        activeAbortRef.current = null;
+      }
+      isSubmittingRef.current = false;
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
   }
 
